@@ -1,0 +1,223 @@
+#include "imports/stdlib.fc";
+
+;; const op::increase = "op::increase"c; ;; create an opcode from string using the "c" prefix, this results in 0x7e8764ef opcode in this case
+
+;; ;; storage variables
+
+;; ;; id is required to be able to create different instances of counters
+;; ;; since addresses in TON depend on the initial state of the contract
+;; global int ctx_id;
+;; global int ctx_counter;
+
+;; ;; load_data populates storage variables using stored data
+;; () load_data() impure {
+;;     var ds = get_data().begin_parse();
+
+;;     ctx_id = ds~load_uint(32);
+;;     ctx_counter = ds~load_uint(32);
+
+;;     ds.end_parse();
+;; }
+
+;; ;; save_data stores storage variables as a cell into persistent storage
+;; () save_data() impure {
+;;     set_data(
+;;         begin_cell()
+;;             .store_uint(ctx_id, 32)
+;;             .store_uint(ctx_counter, 32)
+;;             .end_cell()
+;;     );
+;; }
+
+;; ;; recv_internal is the main function of the contract and is called when it receives a message from other contracts
+;; () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+;;     if (in_msg_body.slice_empty?()) { ;; ignore all empty messages
+;;         return ();
+;;     }
+
+;;     slice cs = in_msg_full.begin_parse();
+;;     int flags = cs~load_uint(4);
+;;     if (flags & 1) { ;; ignore all bounced messages
+;;         return ();
+;;     }
+
+;;     load_data(); ;; here we populate the storage variables
+
+;;     int op = in_msg_body~load_uint(32); ;; by convention, the first 32 bits of incoming message is the op
+;;     int query_id = in_msg_body~load_uint(64); ;; also by convention, the next 64 bits contain the "query id", although this is not always the case
+
+;;     if (op == op::increase) {
+;;         int increase_by = in_msg_body~load_uint(32);
+;;         ctx_counter += increase_by;
+;;         save_data();
+;;         return ();
+;;     }
+
+;;     throw(0xffff); ;; if the message contains an op that is not known to this contract, we throw
+;; }
+
+;; ;; get methods are a means to conveniently read contract data using, for example, HTTP APIs
+;; ;; they are marked with method_id
+;; ;; note that unlike in many other smart contract VMs, get methods cannot be called by other contracts
+
+;; int get_counter() method_id {
+;;     load_data();
+;;     return ctx_counter;
+;; }
+
+;; int get_id() method_id {
+;;     load_data();
+;;     return ctx_id;
+;; }
+
+;; ##################################
+;; my contract
+;; ##################################
+
+const int op::new_key_block = 0x11a78ffe;
+const int op::check_block = 0x8eaa9d76;
+const int config_params::current_validators_set = 34;
+
+(cell, cell) load_data() impure inline_ref {
+  slice cs = get_data().begin_parse();
+  cs~load_uint(32);
+  (cell, cell) res = (cs~load_ref(), cs~load_ref());
+  cs.end_parse();
+  return res;
+}
+
+() store_data(cell vset,
+              cell keyblocks) impure inline_ref {
+  set_data(begin_cell()
+    .store_uint(0, 32)
+    .store_ref(vset)
+    .store_ref(keyblocks)
+  .end_cell());
+}
+
+
+() accept_key_block(cell vset, cell block) impure {
+  (cell old_vset, cell keyblocks) = load_data();
+  store_data(vset, begin_cell().store_ref(block).store_ref(keyblocks).end_cell());
+}
+
+
+cell parse_mc_block_extra(cell mc_extra) {
+  ;; masterchain_block_extra#cca5
+  ;;   key_block:(## 1)
+  ;;   shard_hashes:ShardHashes
+  ;;   shard_fees:ShardFees
+  ;;   ^[ prev_blk_signatures:(HashmapE 16 CryptoSignaturePair)
+  ;;   recover_create_msg:(Maybe ^InMsg)
+  ;;   mint_msg:(Maybe ^InMsg) ]
+  ;;   config:key_block?ConfigParams
+  ;;   = McBlockExtra;
+  var cs = begin_parse(mc_extra);
+  
+  int flag = cs~load_uint(16);
+  int key_block = cs~load_uint(1);
+  ~dump(key_block);
+  cell shard_hashes = cs~load_dict();
+  cell shard_fees = cs~load_dict();
+  cell prev = cs~load_ref();
+
+  slice conf_addr = cs~load_bits(256);
+  ;; ~dump(conf_addr);
+  cell config = cs~load_ref();
+  cell current_vset = config.idict_get_ref(32, config_params::current_validators_set);
+  return current_vset;
+  
+}
+
+cell parse_block_extra(cell extra) {
+  ;; block_extra in_msg_descr:^InMsgDescr
+  ;;   out_msg_descr:^OutMsgDescr
+  ;;   account_blocks:^ShardAccountBlocks
+  ;;   rand_seed:bits256
+  ;;   created_by:bits256
+  ;;   custom:(Maybe ^McBlockExtra) = BlockExtra;
+
+  var cs = begin_parse(extra);
+  cell in_msg_descr = cs~load_ref();
+  cell out_msg_descr = cs~load_ref();
+  cell account_blocks = cs~load_ref();
+  int rand_seed = cs~load_uint(256);
+  int created_by = cs~load_uint(256);
+  cell custom = cs~load_ref();
+
+  return custom;
+} 
+
+cell parse_block(cell block) {
+  ;; block#11ef55aa global_id:int32
+  ;;   info:^BlockInfo value_flow:^ValueFlow
+  ;;   state_update:^(MERKLE_UPDATE ShardState)
+  ;;   extra:^BlockExtra = Block;
+
+  var cs = begin_parse(block);
+  int flag = cs~load_uint(32);
+  int global_id = cs~load_uint(32);
+
+  cell info = cs~load_ref();
+  cell value_flow = cs~load_ref();
+  cell state_update = cs~load_ref();
+  cell extra = cs~load_ref();
+  return extra;
+
+}
+
+(cell, int, int) check_validator_set(cell vset) inline {
+  ~strdump("is vset null");
+  ~dump(vset.cell_null?());
+  slice cs = vset.begin_parse();
+
+  throw_unless(9, cs~load_uint(8) == 0x12);  ;; validators_ext#12 only
+
+  int utime_since = cs~load_uint(32);
+  int utime_until = cs~load_uint(32);
+  int total = cs~load_uint(16);
+  int main = cs~load_uint(16);
+  int total_weight = cs~load_uint(64);
+  ~dump(total);
+  ~dump(main);
+  ;; ~dump(total_weight);
+  throw_unless(9, main > 0);
+  throw_unless(9, total >= main);
+  cell list = cs~load_dict();
+  return (list, utime_since, utime_until);
+}
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg) impure {
+  if (in_msg.slice_empty?()) { ;; ignore all empty messages
+      return ();
+  }
+  ~strdump("start");
+  int action = in_msg~load_uint(32);
+  ;; ~dump(action);
+  int query_id = in_msg~load_uint(64);
+  ;; ~dump(query_id);
+  cell block = in_msg~load_ref();
+  ;; ~dump(block);
+  cell signatures = in_msg~load_ref();
+
+  cell extra = parse_block(block);
+  ~strdump("get extra");
+  cell custom = parse_block_extra(extra);
+  ~strdump("get custom");
+  cell vset = parse_mc_block_extra(custom);
+  ~strdump("get vset");
+  
+  (cell list, int utime_since,  int utime_until) = check_validator_set(vset);
+  utime_since~dump();
+  utime_until~dump();
+  ~dump(list.dict_empty?());
+  
+  (int key, slice vinfo, int success) = list.udict_get_next?(16, 25);
+  ~dump(success);
+  ~dump(key);
+
+
+  accept_key_block(vset, block);
+  ~strdump("done");
+  return ();
+}

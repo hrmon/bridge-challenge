@@ -1,5 +1,7 @@
+import fs from "fs";
+
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { Cell, toNano } from '@ton/core';
+import { beginCell, Cell, toNano } from '@ton/core';
 import { TLBridge } from '../wrappers/TLBridge';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
@@ -22,7 +24,8 @@ describe('TLBridge', () => {
             TLBridge.createFromConfig(
                 {
                     id: 0,
-                    counter: 0,
+                    vset: beginCell().endCell(),
+                    keyBlocks: beginCell().endCell(),
                 },
                 code
             )
@@ -45,37 +48,61 @@ describe('TLBridge', () => {
         // blockchain and tLBridge are ready to use
     });
 
-    it('should increase counter', async () => {
-        const increaseTimes = 3;
-        for (let i = 0; i < increaseTimes; i++) {
-            console.log(`increase ${i + 1}/${increaseTimes}`);
+    // it('should increase counter', async () => {
+    //     const increaseTimes = 3;
+    //     for (let i = 0; i < increaseTimes; i++) {
+    //         console.log(`increase ${i + 1}/${increaseTimes}`);
 
-            const increaser = await blockchain.treasury('increaser' + i);
+    //         const increaser = await blockchain.treasury('increaser' + i);
 
-            const counterBefore = await tLBridge.getCounter();
+    //         const counterBefore = await tLBridge.getCounter();
 
-            console.log('counter before increasing', counterBefore);
+    //         console.log('counter before increasing', counterBefore);
 
-            const increaseBy = Math.floor(Math.random() * 100);
+    //         const increaseBy = Math.floor(Math.random() * 100);
 
-            console.log('increasing by', increaseBy);
+    //         console.log('increasing by', increaseBy);
 
-            const increaseResult = await tLBridge.sendIncrease(increaser.getSender(), {
-                increaseBy,
-                value: toNano('0.05'),
-            });
+    //         const increaseResult = await tLBridge.sendIncrease(increaser.getSender(), {
+    //             increaseBy,
+    //             value: toNano('0.05'),
+    //         });
 
-            expect(increaseResult.transactions).toHaveTransaction({
-                from: increaser.address,
-                to: tLBridge.address,
-                success: true,
-            });
+    //         expect(increaseResult.transactions).toHaveTransaction({
+    //             from: increaser.address,
+    //             to: tLBridge.address,
+    //             success: true,
+    //         });
 
-            const counterAfter = await tLBridge.getCounter();
+    //         const counterAfter = await tLBridge.getCounter();
 
-            console.log('counter after increasing', counterAfter);
+    //         console.log('counter after increasing', counterAfter);
 
-            expect(counterAfter).toBe(counterBefore + increaseBy);
-        }
+    //         expect(counterAfter).toBe(counterBefore + increaseBy);
+    //     }
+    // });
+
+    it('load config 32', async () => {
+        const buf = fs.readFileSync('block.boc'); 
+        // load a list of cells
+        const cells = Cell.fromBoc(buf);
+        // get first cell
+        const block = cells[0];
+
+
+        const increaser = await blockchain.treasury('increaser');
+
+        const increaseResult = await tLBridge.sendNewKeyBlock(increaser.getSender(), {
+            block,
+            signatures: beginCell().endCell(),
+            value: toNano('0.05'),
+        });
+
+        expect(increaseResult.transactions).toHaveTransaction({
+            from: increaser.address,
+            to: tLBridge.address,
+            success: true,
+        });
+
     });
 });

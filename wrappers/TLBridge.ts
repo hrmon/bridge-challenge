@@ -2,15 +2,18 @@ import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, 
 
 export type TLBridgeConfig = {
     id: number;
-    counter: number;
+    vset: Cell;
+    keyBlocks: Cell;
 };
 
 export function tLBridgeConfigToCell(config: TLBridgeConfig): Cell {
-    return beginCell().storeUint(config.id, 32).storeUint(config.counter, 32).endCell();
+    return beginCell().storeUint(config.id, 32).storeRef(config.vset).storeRef(config.keyBlocks).endCell();
 }
 
 export const Opcodes = {
     increase: 0x7e8764ef,
+    newKeyBlock: 0x11a78ffe,
+    checkBlock: 0x8eaa9d76,
 };
 
 export class TLBridge implements Contract {
@@ -50,6 +53,50 @@ export class TLBridge implements Contract {
                 .storeUint(Opcodes.increase, 32)
                 .storeUint(opts.queryID ?? 0, 64)
                 .storeUint(opts.increaseBy, 32)
+                .endCell(),
+        });
+    }
+
+    async sendNewKeyBlock(
+        provider: ContractProvider,
+        via: Sender,
+        opts: {
+            value: bigint,
+            block: Cell;
+            signatures: Cell;
+            queryID?: number;
+        }
+    ) {
+        await provider.internal(via, {
+            value: opts.value,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(Opcodes.newKeyBlock, 32)
+                .storeUint(opts.queryID ?? 0, 64)
+                .storeRef(opts.block)
+                .storeRef(opts.signatures)
+                .endCell(),
+        });
+    }
+
+    async sendCheckBlock(
+        provider: ContractProvider,
+        via: Sender,
+        opts: {
+            value: bigint,
+            block: Cell;
+            signatures: Cell;
+            queryID?: number;
+        }
+    ) {
+        await provider.internal(via, {
+            value: opts.value,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(Opcodes.newKeyBlock, 32)
+                .storeUint(opts.queryID ?? 0, 64)
+                .storeRef(opts.block)
+                .storeRef(opts.signatures)
                 .endCell(),
         });
     }
