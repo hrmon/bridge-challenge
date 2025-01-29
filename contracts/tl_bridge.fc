@@ -168,6 +168,28 @@ cell parse_block(cell block) {
 
 }
 
+(cell, int, int, int) check_validator_set(cell vset) inline {
+  ~strdump("is vset null");
+  ~dump(vset.cell_null?());
+  slice cs = vset.begin_parse();
+
+  throw_unless(9, cs~load_uint(8) == 0x12);  ;; validators_ext#12 only
+
+  int utime_since = cs~load_uint(32);
+  int utime_until = cs~load_uint(32);
+  int total = cs~load_uint(16);
+  int main = cs~load_uint(16);
+  int total_weight = cs~load_uint(64);
+  ~dump(total);
+  ~dump(main);
+  ~dump(total_weight);
+  throw_unless(9, main > 0);
+  throw_unless(9, total >= main);
+  cell list = cs~load_dict();
+  return (list, utime_since, utime_until, total_weight);
+}
+
+
 int check_block_signs(int block_hash, cell signatures) {
   ;; signs
   slice signsc = signatures.begin_parse();
@@ -176,8 +198,10 @@ int check_block_signs(int block_hash, cell signatures) {
 
   ;; load current vset
   (cell cur_vset, _) = load_data();
-  (cell cur_list, int utime_since,  int utime_until) = check_validator_set(cur_vset);
-
+  (cell cur_list, int utime_since,  int utime_until, int total_weight) = check_validator_set(cur_vset);
+  ~strdump("epoch");
+  ~dump(utime_since);
+  ~dump(utime_until);
 
   ;; check signs
   var message = begin_cell()
@@ -213,28 +237,7 @@ int check_block_signs(int block_hash, cell signatures) {
     }
   } until ( ~ found?);
   ~dump(verified_weight);
-  return -1;
-}
-
-(cell, int, int) check_validator_set(cell vset) inline {
-  ~strdump("is vset null");
-  ~dump(vset.cell_null?());
-  slice cs = vset.begin_parse();
-
-  throw_unless(9, cs~load_uint(8) == 0x12);  ;; validators_ext#12 only
-
-  int utime_since = cs~load_uint(32);
-  int utime_until = cs~load_uint(32);
-  int total = cs~load_uint(16);
-  int main = cs~load_uint(16);
-  int total_weight = cs~load_uint(64);
-  ~dump(total);
-  ~dump(main);
-  ~dump(total_weight);
-  throw_unless(9, main > 0);
-  throw_unless(9, total >= main);
-  cell list = cs~load_dict();
-  return (list, utime_since, utime_until);
+  return (verified_weight * 3 >= 2 * total_weight);
 }
 
 
