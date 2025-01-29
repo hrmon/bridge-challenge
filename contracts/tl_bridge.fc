@@ -76,6 +76,8 @@
 
 const int op::new_key_block = 0x11a78ffe;
 const int op::check_block = 0x8eaa9d76;
+const int tag::ok = 0xff8ff4e1;
+const int tag::correct = 0xce02b807;
 const int config_params::current_validators_set = 34;
 
 (cell, cell) load_data() impure inline_ref {
@@ -166,6 +168,54 @@ cell parse_block(cell block) {
 
 }
 
+int check_block_signs(int block_hash, cell signatures) {
+  ;; signs
+  slice signsc = signatures.begin_parse();
+  slice file_hash = signsc~load_bits(256);
+  cell signdict = signsc~load_dict();
+
+  ;; load current vset
+  (cell cur_vset, _) = load_data();
+  (cell cur_list, int utime_since,  int utime_until) = check_validator_set(cur_vset);
+
+
+  ;; check signs
+  var message = begin_cell()
+    .store_uint(0x706e0bc5, 32)
+    .store_uint(block_hash, 256)
+    .store_slice(file_hash).end_cell().begin_parse();
+
+  int index = -1;
+  int verified_weight = 0;
+  do {
+    (index, slice signature, int found?) = signdict.udict_get_next?(16, index);
+    if(found?) {
+      ~strdump("index found:");
+      ~dump(index);
+      (slice vinfo, int vfound?) = cur_list.udict_get?(16, index);
+      throw_unless(401, vfound?);
+
+      ;; validator#53 public_key:SigPubKey weight:uint64 = ValidatorDescr;
+      ;; validator_addr#73 public_key:SigPubKey weight:uint64 adnl_addr:bits256 = ValidatorDescr;
+      ;; validators#11 utime_since:uint32 utime_until:uint32 
+      ;;   total:(## 16) main:(## 16) { main <= total } { main >= 1 } 
+      ;;   list:(Hashmap 16 ValidatorDescr) = ValidatorSet;
+      vinfo~skip_bits(8 + 32);
+      int pubkey = vinfo~load_uint(256);
+      int weight = vinfo~load_uint(64);   
+
+      ifnot(check_data_signature(message, signature, pubkey)) {
+        ~dump(index);
+        ~dump(weight);
+        throw(502);
+      }
+      verified_weight += weight;
+    }
+  } until ( ~ found?);
+  ~dump(verified_weight);
+  return -1;
+}
+
 (cell, int, int) check_validator_set(cell vset) inline {
   ~strdump("is vset null");
   ~dump(vset.cell_null?());
@@ -187,6 +237,22 @@ cell parse_block(cell block) {
   return (list, utime_since, utime_until);
 }
 
+
+() send_answer(cell in_msg_full, int query_id, int ans_tag, int block_hash) impure inline_ref {
+
+  slice cs = in_msg_full.begin_parse();
+  int flags = cs~load_uint(4);
+  slice s_addr = cs~load_msg_addr();
+  send_raw_message(begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(s_addr)
+    .store_uint(0, 4 + 1 + 4 + 4 + 64 + 32 + 1 + 1)
+    .store_uint(ans_tag, 32)
+    .store_uint(query_id, 64)
+    .store_uint(block_hash, 256)
+    .end_cell(), 64);
+}
+
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg) impure {
   if (in_msg.slice_empty?()) { ;; ignore all empty messages
       return ();
@@ -194,11 +260,39 @@ cell parse_block(cell block) {
   ~strdump("start");
   int action = in_msg~load_uint(32);
   ;; ~dump(action);
-  int query_id = in_msg~load_uint(64);
-  ;; ~dump(query_id);
-  cell block = in_msg~load_ref();
-  ;; ~dump(block);
-  cell signatures = in_msg~load_ref();
+  if (action == op::check_block) {
+    int query_id = in_msg~load_uint(64);
+    ;; ~dump(query_id);
+    cell block = in_msg~load_ref();
+    ;; ~dump(block);
+    cell signatures = in_msg~load_ref();
+    int block_hash = block.cell_hash();
+    throw_unless(503, check_block_signs(block_hash, signatures));
+  
+    send_answer(in_msg_full,query_id,tag::correct,block_hash);
+
+  }
+  if (action == op::new_key_block) {
+    int query_id = in_msg~load_uint(64);
+    ;; ~dump(query_id);
+    cell block = in_msg~load_ref();
+    ;; ~dump(block);
+    cell signatures = in_msg~load_ref();
+    int block_hash = block.cell_hash();
+    throw_unless(503, check_block_signs(block_hash, signatures));
+
+    cell extra = parse_block(block);
+    ~strdump("get extra");
+    cell custom = parse_block_extra(extra);
+    ~strdump("get custom");
+    cell new_vset = parse_mc_block_extra(custom);
+    ~strdump("get vset");
+
+
+    accept_key_block(new_vset, block);
+    send_answer(in_msg_full,query_id,tag::ok,block_hash);
+  }
+  
 
   ;; cell extra = parse_block(block);
   ;; ~strdump("get extra");
@@ -216,60 +310,6 @@ cell parse_block(cell block) {
   ;; ~dump(success);
   ;; ~dump(key);
 
-  ;; signs
-  slice signsc = signatures.begin_parse();
-  slice file_hash = signsc~load_bits(256);
-  cell signdict = signsc~load_dict();
-
-  ;; current vset
-  (cell cur_vset, _) = load_data();
-  (cell cur_list, int utime_since,  int utime_until) = check_validator_set(cur_vset);
-  ;; check signs
-  int index = -1;
-  int verified_weight = 0;
-  do {
-    (index, slice signature, int found?) = signdict.udict_get_next?(16, index);
-    if(found?) {
-      ~strdump("index found:");
-      ~dump(index);
-      (slice vinfo, int vfound?) = cur_list.udict_get?(16, index);
-      throw_unless(401, vfound?);
-
-      ;; validator#53 public_key:SigPubKey weight:uint64 = ValidatorDescr;
-      ;; validator_addr#73 public_key:SigPubKey weight:uint64 adnl_addr:bits256 = ValidatorDescr;
-      ;; validators#11 utime_since:uint32 utime_until:uint32 
-      ;;   total:(## 16) main:(## 16) { main <= total } { main >= 1 } 
-      ;;   list:(Hashmap 16 ValidatorDescr) = ValidatorSet;
-      vinfo~skip_bits(8 + 32);
-      int pubkey = vinfo~load_uint(256);
-      int weight = vinfo~load_uint(64);
-
-      var message = begin_cell()
-        .store_uint(0x706e0bc5, 32)
-        .store_uint(block.cell_hash(), 256)
-        .store_slice(file_hash).end_cell();
-
-      
-
-      ifnot(check_data_signature(message.begin_parse(), signature, pubkey)) {
-        ~dump(index);
-        ~dump(weight);
-        throw(502);
-      }
-      verified_weight += weight;
-    }
-  } until ( ~ found?);
-  ~dump(verified_weight);
-
-  cell extra = parse_block(block);
-  ~strdump("get extra");
-  cell custom = parse_block_extra(extra);
-  ~strdump("get custom");
-  cell new_vset = parse_mc_block_extra(custom);
-  ~strdump("get vset");
-
-
-  accept_key_block(new_vset, block);
   ~strdump("done");
   return ();
 }
