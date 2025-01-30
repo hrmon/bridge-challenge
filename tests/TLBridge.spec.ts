@@ -198,13 +198,13 @@ describe('TLBridge', () => {
         //send message
         const sender = await blockchain.treasury('sender');
 
-        const keyBlockResult = await tLBridge.sendCheckBlock(sender.getSender(), {
+        const checkBlockResult = await tLBridge.sendCheckBlock(sender.getSender(), {
             block,
             signatures: signCell,
             value: toNano('0.05'),
         });
 
-        expect(keyBlockResult.transactions).toHaveTransaction({
+        expect(checkBlockResult.transactions).toHaveTransaction({
             from: sender.address,
             to: tLBridge.address,
             success: true,

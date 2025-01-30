@@ -70,9 +70,15 @@
 ;;     return ctx_id;
 ;; }
 
+;;
+;; TODO: pruned branches
+
 ;; ##################################
 ;; my contract
 ;; ##################################
+
+global cell ctx_cur_list, int ctx_utime_since,  int ctx_utime_until, int ctx_total_weight;
+
 
 const int op::new_key_block = 0x11a78ffe;
 const int op::check_block = 0x8eaa9d76;
@@ -150,7 +156,42 @@ cell parse_block_extra(cell extra) {
   return custom;
 } 
 
-cell parse_block(cell block) {
+
+int check_block_info(cell info) {
+  ;; block_info#9bc7a987 version:uint32
+  ;;   not_master:(## 1)
+  ;;   after_merge:(## 1) before_split:(## 1)
+  ;;   after_split:(## 1)
+  ;;   want_split:Bool want_merge:Bool
+  ;;   key_block:Bool vert_seqno_incr:(## 1)
+  ;;   flags:(## 8) { flags <= 1 }
+  ;;   seq_no:# vert_seq_no:# { vert_seq_no >= vert_seqno_incr }
+  ;;   { prev_seq_no:# } { ~prev_seq_no + 1 = seq_no }
+  ;;   shard:ShardIdent gen_utime:uint32
+  ;;   start_lt:uint64 end_lt:uint64
+  ;;   gen_validator_list_hash_short:uint32
+  ;;   gen_catchain_seqno:uint32
+  ;;   min_ref_mc_seqno:uint32
+  ;;   prev_key_block_seqno:uint32
+  ;;   gen_software:flags . 0?GlobalVersion
+  ;;   master_ref:not_master?^BlkMasterInfo
+  ;;   prev_ref:^(BlkPrevInfo after_merge)
+  ;;   prev_vert_ref:vert_seqno_incr?^(BlkPrevInfo 0)
+  ;;   = BlockInfo;
+  var cs = begin_parse(info);
+  ;; ~dump(cs.slice_bits());
+  cs~load_uint(32 + 32 + 4 + 2);
+  int is_key? = cs~load_int(1);
+  ;; ~dump(is_key?);
+  cs~load_uint(1 + 8 + 32 + 32 + 2 + 6 + 32 + 64);
+  int gen_utime = cs~load_uint(32);
+  ~dump(gen_utime);
+  throw_unless(504, gen_utime >= ctx_utime_since);
+  throw_unless(505, gen_utime <= ctx_utime_until);
+  return is_key?;
+}
+
+(cell, int) parse_block(cell block) impure { ;; NOTE: is it good to be impure?
   ;; block#11ef55aa global_id:int32
   ;;   info:^BlockInfo value_flow:^ValueFlow
   ;;   state_update:^(MERKLE_UPDATE ShardState)
@@ -161,10 +202,12 @@ cell parse_block(cell block) {
   int global_id = cs~load_uint(32);
 
   cell info = cs~load_ref();
+  int is_key? = check_block_info(info);
+
   cell value_flow = cs~load_ref();
   cell state_update = cs~load_ref();
   cell extra = cs~load_ref();
-  return extra;
+  return (extra, is_key?);
 
 }
 
@@ -189,19 +232,19 @@ cell parse_block(cell block) {
   return (list, utime_since, utime_until, total_weight);
 }
 
+() load_current_validators() impure {
+  (cell cur_vset, _) = load_data();
+  (ctx_cur_list, ctx_utime_since,  ctx_utime_until, ctx_total_weight) = check_validator_set(cur_vset);
+  ~strdump("epoch");
+  ~dump(ctx_utime_since);
+  ~dump(ctx_utime_until);
+}
 
 int check_block_signs(int block_hash, cell signatures) {
   ;; signs
   slice signsc = signatures.begin_parse();
   slice file_hash = signsc~load_bits(256);
   cell signdict = signsc~load_dict();
-
-  ;; load current vset
-  (cell cur_vset, _) = load_data();
-  (cell cur_list, int utime_since,  int utime_until, int total_weight) = check_validator_set(cur_vset);
-  ~strdump("epoch");
-  ~dump(utime_since);
-  ~dump(utime_until);
 
   ;; check signs
   var message = begin_cell()
@@ -216,7 +259,7 @@ int check_block_signs(int block_hash, cell signatures) {
     if(found?) {
       ~strdump("index found:");
       ~dump(index);
-      (slice vinfo, int vfound?) = cur_list.udict_get?(16, index);
+      (slice vinfo, int vfound?) = ctx_cur_list.udict_get?(16, index);
       throw_unless(401, vfound?);
 
       ;; validator#53 public_key:SigPubKey weight:uint64 = ValidatorDescr;
@@ -237,7 +280,7 @@ int check_block_signs(int block_hash, cell signatures) {
     }
   } until ( ~ found?);
   ~dump(verified_weight);
-  return (verified_weight * 3 >= 2 * total_weight);
+  return (verified_weight * 3 >= 2 * ctx_total_weight);
 }
 
 
@@ -270,6 +313,11 @@ int check_block_signs(int block_hash, cell signatures) {
     ;; ~dump(block);
     cell signatures = in_msg~load_ref();
     int block_hash = block.cell_hash();
+
+    ;; load current vset
+    load_current_validators();
+    parse_block(block);
+
     throw_unless(503, check_block_signs(block_hash, signatures));
   
     send_answer(in_msg_full,query_id,tag::correct,block_hash);
@@ -282,9 +330,14 @@ int check_block_signs(int block_hash, cell signatures) {
     ;; ~dump(block);
     cell signatures = in_msg~load_ref();
     int block_hash = block.cell_hash();
+
+    ;; load current vset
+    load_current_validators();
+    (cell extra, int is_key?) = parse_block(block);
+
     throw_unless(503, check_block_signs(block_hash, signatures));
 
-    cell extra = parse_block(block);
+    throw_unless(506, is_key?);
     ~strdump("get extra");
     cell custom = parse_block_extra(extra);
     ~strdump("get custom");
