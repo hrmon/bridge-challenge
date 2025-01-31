@@ -5,7 +5,7 @@ import { beginCell, Cell, toNano, Dictionary } from '@ton/core';
 import { TLBridge } from '../wrappers/TLBridge';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { extractValidatorsMap } from "./helpers";
+import { extractValidatorSet, extractValidatorsMap } from "../misc/helpers";
 
 
 type SignItem = {
@@ -27,18 +27,7 @@ describe('TLBridge', () => {
 
     beforeEach(async () => {
 
-        const buf = fs.readFileSync('misc/key_block.boc');
-        const cells = Cell.fromBoc(buf);
-        const block = cells[0];
-        const extra = block.refs[3];
-        const mcExtra = extra.refs[3];
-        const config = Dictionary.loadDirect(
-            Dictionary.Keys.Uint(32),
-            Dictionary.Values.Cell(),
-            mcExtra.refs[3]
-        );
-        const vset = config.get(34)!;
-
+        const vset = extractValidatorSet('misc/key_block.boc');
 
         blockchain = await Blockchain.create();
 
@@ -130,7 +119,8 @@ describe('TLBridge', () => {
 
     it('accept new key block', async () => {
 
-        const validatorMap = extractValidatorsMap('misc/key_block.boc');
+        const [keyBlock] = Cell.fromBoc(fs.readFileSync('misc/key_block.boc'));
+        const validatorMap = extractValidatorsMap(keyBlock);
 
         // Bag-of-cells
         const buf = fs.readFileSync('misc/key_block.boc');
@@ -171,7 +161,8 @@ describe('TLBridge', () => {
     });
 
     it('check block', async () => {
-        const validatorMap = extractValidatorsMap('misc/key_block.boc');
+        const [keyBlock] = Cell.fromBoc(fs.readFileSync('misc/key_block.boc'));
+        const validatorMap = extractValidatorsMap(keyBlock);
 
 
         const buf = fs.readFileSync('misc/block.boc');

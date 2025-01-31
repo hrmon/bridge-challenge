@@ -1,13 +1,18 @@
-import { toNano } from '@ton/core';
+import { beginCell, toNano } from '@ton/core';
 import { TLBridge } from '../wrappers/TLBridge';
 import { compile, NetworkProvider } from '@ton/blueprint';
+import { extractValidatorSet } from '../misc/helpers';
 
 export async function run(provider: NetworkProvider) {
+
+
+    const vset = extractValidatorSet('misc/key_block.boc');
     const tLBridge = provider.open(
         TLBridge.createFromConfig(
             {
                 id: Math.floor(Math.random() * 10000),
-                counter: 0,
+                vset: vset,
+                keyBlocks: beginCell().endCell()
             },
             await compile('TLBridge')
         )
