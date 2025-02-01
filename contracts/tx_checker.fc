@@ -1,0 +1,137 @@
+#include "imports/stdlib.fc";
+
+const op::check_transaction = 0x91d555f7; 
+const tag::transaction_checked = 0x756adff1; 
+
+;; () load_data() impure {
+;;     var ds = get_data().begin_parse();
+
+;;     ctx_id = ds~load_uint(32);
+;;     ctx_counter = ds~load_uint(32);
+
+;;     ds.end_parse();
+;; }
+
+;; () save_data() impure {
+;;     set_data(
+;;         begin_cell()
+;;             .store_uint(ctx_id, 32)
+;;             .store_uint(ctx_counter, 32)
+;;             .end_cell()
+;;     );
+;; }
+
+cell extract_ref(cell data, slice path) {
+  ;; No HashMapAug instructions! AAAAGH!
+  var cs = begin_parse(account_block);
+  
+  var path_len = path~load_uint(16);
+  var it = data;
+  repeat(path_len) {
+    var index = path~load_uint(2);
+    var cs = it.begin_parse();
+    repeat (index + 1) {
+      it = cs~load_ref();
+    }
+  }
+  return it;
+}
+
+cell extract_transaction(cell account_block, int account_key, int tx_key) {
+  var cs = begin_parse(account_block);
+
+  ;; hashmapaug
+  ~dump(cs.slice_refs());
+  var root = cs~load_ref();
+  var rs = root~begin_parse();
+  ~dump(accounts.dict_empty?());
+
+  (var key, var data, var suc) = accounts.udict_get_max_ref?(256);
+  ~dump(suc);
+
+  ;; (var key, var data, var suc) = accounts.udict_get_next?(256, 0);
+  ;; ~dump(suc);
+
+  (var account, int acc_found) = accounts.udict_get?(256, account_key);
+  ~strdump("account found?");
+  ~dump(acc_found);
+  ;; get tx
+  var tx_map = account~load_ref();
+  (slice tx_data, int tx_found) = tx_map.udict_get?(64, tx_key);
+
+  var tx = tx_data~load_ref();
+  return tx;
+
+} 
+
+
+cell extract_account_block(cell extra) {
+  var cs = begin_parse(extra);
+  cell in_msg_descr = cs~load_ref();
+  cell out_msg_descr = cs~load_ref();
+  cell account_block = cs~load_ref();
+
+  return account_block;
+} 
+
+cell parse_block(cell block) impure {
+  var cs = begin_parse(block);
+  cell info = cs~load_ref();
+  cell value_flow = cs~load_ref();
+  cell state_update = cs~load_ref();
+  cell extra = cs~load_ref();
+
+  return extra;
+
+}
+
+() send_answer(cell in_msg_full, int ans_tag, cell tx) impure inline_ref {
+
+  slice cs = in_msg_full.begin_parse();
+  int flags = cs~load_uint(4);
+  slice s_addr = cs~load_msg_addr();
+  send_raw_message(begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(s_addr)
+    .store_uint(0, 4 + 1 + 4 + 4 + 64 + 32 + 1 + 1)
+    .store_uint(ans_tag, 32)
+    .store_ref(tx)
+    .end_cell(), 64);
+}
+
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg) impure {
+    if (in_msg.slice_empty?()) { ;; ignore all empty messages
+        return ();
+    }
+
+    int op = in_msg~load_uint(32);
+
+    if (op == op::check_transaction) {
+      ;; load msg
+      cell target_tx = in_msg~load_ref();
+      cell proof = in_msg~load_ref();
+      cell cur_block = in_msg~load_ref();
+
+      ;; load tx proof keys
+      slice proof_sc = proof.begin_parse();
+      int account_key = proof_sc~load_uint(256);
+      int tx_key = proof_sc~load_uint(64);
+      ~strdump("proof data loaded");
+      ;; find tx in block
+      cell extra = parse_block(cur_block);
+      cell account_block = extract_account_block(extra);
+      ~strdump("account block loaded");
+      cell block_tx = extract_transaction(account_block,account_key,tx_key);
+      ~strdump("block tx loaded");
+      ;; check hash
+      int target_hash = target_tx.cell_hash();
+      int source_hash = block_tx.cell_hash();
+      if (target_hash == source_hash) {
+        send_answer(in_msg_full,tag::transaction_checked,target_tx);
+      }
+      return ();
+    }
+
+    throw(0xffff);
+}
