@@ -5,13 +5,7 @@ import { beginCell, Cell, toNano, Dictionary } from '@ton/core';
 import { LiteClient } from '../wrappers/LiteClient';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { extractValidatorSet, extractValidatorsMap } from "../misc/helpers";
-
-
-type SignItem = {
-    node_id_short: string;
-    signature: string;
-};
+import { createLiteClientSignsCell, extractValidatorSet, extractValidatorsMap } from "../misc/helpers";
 
 
 describe('LiteClient', () => {
@@ -122,27 +116,13 @@ describe('LiteClient', () => {
         const [keyBlock] = Cell.fromBoc(fs.readFileSync('misc/key_block.boc'));
         const validatorMap = extractValidatorsMap(keyBlock);
 
+        // create signature map <index in vset config> -> <signature>
+        let signCell = createLiteClientSignsCell('misc/signs_key_block.json', validatorMap);
+
         // Bag-of-cells
         const buf = fs.readFileSync('misc/key_block.boc');
         const cells = Cell.fromBoc(buf);
         const block = cells[0];
-
-        // create signature map <index in vset config> -> <signature>
-        let signs = JSON.parse(fs.readFileSync('misc/signs_key_block.json', 'utf8'));
-        let signDict = Dictionary.empty(Dictionary.Keys.Uint(16), Dictionary.Values.Buffer(64));
-        signs.result.signatures.forEach((item: SignItem) => {
-            let key = validatorMap.get(item.node_id_short);
-            console.log(key);
-            signDict.set(key, Buffer.from(item.signature, 'base64'));
-        });
-
-
-        // create signature cell
-        const fileHash = Buffer.from(signs.result.id.file_hash, "base64");
-        let signCell = beginCell()
-            .storeBuffer(fileHash)
-            .storeDict(signDict)
-            .endCell();
 
         //send message
         const sender = await blockchain.treasury('sender');
@@ -165,26 +145,13 @@ describe('LiteClient', () => {
         const validatorMap = extractValidatorsMap(keyBlock);
 
 
+        // create signature map <index in vset config> -> <signature>
+        let signCell = createLiteClientSignsCell('misc/signs_block.json', validatorMap);
+
+        // load block
         const buf = fs.readFileSync('misc/block.boc');
         const cells = Cell.fromBoc(buf);
         const block = cells[0];
-
-        // create signature map <index in vset config> -> <signature>
-        let signs = JSON.parse(fs.readFileSync('misc/signs_block.json', 'utf8'));
-        let signDict = Dictionary.empty(Dictionary.Keys.Uint(16), Dictionary.Values.Buffer(64));
-        signs.result.signatures.forEach((item: SignItem) => {
-            let key = validatorMap.get(item.node_id_short);
-            console.log(key);
-            signDict.set(key, Buffer.from(item.signature, 'base64'));
-        });
-
-
-        // create signature cell
-        const fileHash = Buffer.from(signs.result.id.file_hash, "base64");
-        let signCell = beginCell()
-            .storeBuffer(fileHash)
-            .storeDict(signDict)
-            .endCell();
 
         //send message
         const sender = await blockchain.treasury('sender');

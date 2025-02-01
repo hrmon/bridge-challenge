@@ -370,7 +370,3 @@ int check_block_signs(int block_hash, cell signatures) {
   return ();
 }
 
-
-int get_cell_hash(cell data) method_id {
-  return data.cell_hash();
-}

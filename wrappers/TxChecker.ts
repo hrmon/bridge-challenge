@@ -1,4 +1,4 @@
-import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
+import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Dictionary, Sender, SendMode } from '@ton/core';
 
 export type TxCheckerConfig = {
     id: number;
@@ -6,7 +6,11 @@ export type TxCheckerConfig = {
 };
 
 export function txCheckerConfigToCell(config: TxCheckerConfig): Cell {
-    return beginCell().storeUint(config.id, 32).storeAddress(config.liteClientAddr).endCell();
+    return beginCell()
+        .storeUint(config.id, 32)
+        .storeAddress(config.liteClientAddr)
+        .storeDict(Dictionary.empty())
+        .endCell();
 }
 
 export const Opcodes = {

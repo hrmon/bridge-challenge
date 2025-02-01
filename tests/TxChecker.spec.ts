@@ -5,7 +5,7 @@ import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import { randomAddress } from '@ton/test-utils';
 import { readFileSync } from 'fs';
-import { search } from '../misc/helpers';
+import { createLiteClientSignsCell, extractValidatorsMap, searchCellTree } from '../misc/helpers';
 
 describe('TxChecker', () => {
     let code: Cell;
@@ -21,17 +21,18 @@ describe('TxChecker', () => {
     beforeEach(async () => {
         blockchain = await Blockchain.create();
 
+        deployer = await blockchain.treasury('deployer');
+
         txChecker = blockchain.openContract(
             TxChecker.createFromConfig(
                 {
                     id: 0,
-                    liteClientAddr: randomAddress(-1),
+                    liteClientAddr: deployer.address,
                 },
                 code
             )
         );
 
-        deployer = await blockchain.treasury('deployer');
 
         const deployResult = await txChecker.sendDeploy(deployer.getSender(), toNano('0.05'));
 
@@ -53,8 +54,14 @@ describe('TxChecker', () => {
         const [transaction] = Cell.fromBoc(readFileSync('misc/tx.boc'));
 
 
+        // create block cell
+        const validatorMap = extractValidatorsMap(keyBlock);
+        const signCell = createLiteClientSignsCell('misc/signs_key_block.json', validatorMap);
+        const blockCell = beginCell().storeRef(keyBlock).storeRef(signCell).endCell();
+
+
         // construct proof as path to tx in block
-        const { found, path } = search(keyBlock, transaction);
+        const { found, path } = searchCellTree(keyBlock, transaction);
         let proofCell = beginCell().storeUint(path.length, 16);
         path.forEach((index) => { proofCell.storeUint(index, 2) });
 
@@ -62,13 +69,27 @@ describe('TxChecker', () => {
         //send message
         const sender = await blockchain.treasury('sender');
 
-        const checkBlockResult = await txChecker.sendCheckTransaction(sender.getSender(), {
+        // it is expensive message, 0.05 is not enouch
+        const checkTxResult = await txChecker.sendCheckTransaction(sender.getSender(), {
             transaction,
             proof: proofCell.endCell(),
-            currentBlock: keyBlock,
-            value: toNano('0.05'),
+            currentBlock: blockCell,
+            value: toNano('0.5'),
         });
-        expect(checkBlockResult.transactions).toHaveTransaction({
+
+
+        // checkBlockResult.transactions.forEach((tx) => {
+        //     console.log(tx.inMessage!.info)
+        //     if (tx.description.type == "generic") {
+        //         console.log(tx.description.computePhase)
+        //         console.log(tx.description.actionPhase)
+        //     }
+        //     tx.outMessages.values().forEach((msg) => {
+        //         console.log(msg.info);
+        //     })
+        // })
+
+        expect(checkTxResult.transactions).toHaveTransaction({
             from: sender.address,
             to: txChecker.address,
             success: true,

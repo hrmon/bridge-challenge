@@ -2,24 +2,31 @@
 
 const op::check_transaction = 0x91d555f7; 
 const tag::transaction_checked = 0x756adff1; 
+const op::block_checked = 0xce02b807;
+const lc::op::check_block = 0x8eaa9d76;
 
-;; () load_data() impure {
-;;     var ds = get_data().begin_parse();
+global int ctx_id, slice ctx_lite_client_addr, cell ctx_query_map;
 
-;;     ctx_id = ds~load_uint(32);
-;;     ctx_counter = ds~load_uint(32);
 
-;;     ds.end_parse();
-;; }
+() load_data() impure {
+    var ds = get_data().begin_parse();
 
-;; () save_data() impure {
-;;     set_data(
-;;         begin_cell()
-;;             .store_uint(ctx_id, 32)
-;;             .store_uint(ctx_counter, 32)
-;;             .end_cell()
-;;     );
-;; }
+    ctx_id = ds~load_uint(32);
+    ctx_lite_client_addr = ds~load_msg_addr();
+    ctx_query_map = ds~load_dict();
+
+    ds.end_parse();
+}
+
+() save_data() impure {
+    set_data(
+        begin_cell()
+            .store_uint(ctx_id, 32)
+            .store_slice(ctx_lite_client_addr)
+            .store_dict(ctx_query_map)
+            .end_cell()
+    );
+}
 
 cell extract_ref(cell data, slice path) {
   ;; No HashMapAug instructions! AAAAGH!
@@ -84,17 +91,46 @@ cell extract_ref(cell data, slice path) {
 
 ;; }
 
-() send_answer(cell in_msg_full, int ans_tag, cell tx) impure inline_ref {
-
+slice get_sender_addr(cell in_msg_full) {
   slice cs = in_msg_full.begin_parse();
   int flags = cs~load_uint(4);
   slice s_addr = cs~load_msg_addr();
+  return s_addr;
+}
+
+() send_answer(slice dest_addr, int ans_tag, cell tx) impure inline_ref {
+
   send_raw_message(begin_cell()
     .store_uint(0x18, 6)
-    .store_slice(s_addr)
+    .store_slice(dest_addr)
     .store_uint(0, 4 + 1 + 4 + 4 + 64 + 32 + 1 + 1)
     .store_uint(ans_tag, 32)
     .store_ref(tx)
+    .end_cell(), 64);
+}
+
+int save_query(cell target_tx, cell in_msg_full) impure {
+  slice s_addr = get_sender_addr(in_msg_full);
+  
+  int tx_hash = target_tx.cell_hash();
+  int query_id = tx_hash >> ( 128 + 64 );
+  var data = begin_cell().store_slice(s_addr).store_ref(target_tx);
+  
+  ctx_query_map~udict_set_builder(64,query_id, data);
+  return query_id;
+}
+
+
+() send_check_block(int query_id, cell block, cell signs) impure inline_ref {
+
+  send_raw_message(begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(ctx_lite_client_addr)
+    .store_uint(0, 4 + 1 + 4 + 4 + 64 + 32 + 1 + 1)
+    .store_uint(lc::op::check_block, 32)
+    .store_uint(query_id, 64)
+    .store_ref(block)
+    .store_ref(signs)
     .end_cell(), 64);
 }
 
@@ -110,7 +146,11 @@ cell extract_ref(cell data, slice path) {
       ;; load msg
       cell target_tx = in_msg~load_ref();
       cell proof = in_msg~load_ref();
-      cell cur_block = in_msg~load_ref();
+      
+      cell block = in_msg~load_ref();
+      var cs = block.begin_parse();
+      var cur_block = cs~load_ref();
+      var block_signs = cs~load_ref();
 
       ;; load tx proof keys
       slice tx_path = proof.begin_parse();
@@ -120,9 +160,32 @@ cell extract_ref(cell data, slice path) {
       int target_hash = target_tx.cell_hash();
       int source_hash = block_tx.cell_hash();
       if (target_hash == source_hash) {
-        send_answer(in_msg_full,tag::transaction_checked,target_tx);
+        load_data();
+        int query_id = save_query(target_tx,in_msg_full);
+        send_check_block(query_id,cur_block,block_signs);
+        ;; send_answer(in_msg_full,tag::transaction_checked,target_tx);
+        save_data();
+        ~strdump("done send");
+        return ();
       }
-      return ();
+    }
+    if (op == op::block_checked) {
+        ~strdump("wow it is correct");
+        load_data();
+
+        var s_addr = get_sender_addr(in_msg_full);
+        throw_unless(401, equal_slices_bits(s_addr,ctx_lite_client_addr));
+        
+        var query_id = in_msg~load_uint(64);
+        (var data, int found) = ctx_query_map~udict_delete_get?(64,query_id);
+        throw_unless(404, found);
+        var query_src_addr = data~load_msg_addr();
+        var target_tx = data~load_ref();
+
+        send_answer(query_src_addr,tag::transaction_checked,target_tx);
+        save_data();
+        ~strdump("so done!");
+        return ();
     }
 
     throw(0xffff);

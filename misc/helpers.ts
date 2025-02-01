@@ -17,6 +17,12 @@ export type LiteServer = {
     }
 }
 
+type SignItem = {
+    node_id_short: string;
+    signature: string;
+};
+
+
 function intToIP(int: number) {
     var part1 = int & 255;
     var part2 = ((int >> 8) & 255);
@@ -59,7 +65,6 @@ export function extractValidatorsMap(block: Cell) {
         const nodeIdData = Buffer.concat([Buffer.from([0xc6, 0xb4, 0x13, 0x48]), vinfo.subarray(5, 37)]);
         const nodeId = sha256_sync(nodeIdData).toString('base64');
         validatorMap.set(nodeId, key);
-        console.log(nodeId);
     });
     return validatorMap;
 }
@@ -156,7 +161,7 @@ export async function createLiteSMCMessage(params: { configPath: string, blockId
     }
     else {
         const master = await client.getMasterchainInfo()
-        console.log('master', master)
+        // console.log('master', master)
         blockId = master.last;
     }
 
@@ -166,7 +171,7 @@ export async function createLiteSMCMessage(params: { configPath: string, blockId
         id: blockId,
     });
 
-    console.log(block);
+    // console.log(block);
     const [rootCell] = Cell.fromBoc(block.data);
 
     // get prev key block id
@@ -191,11 +196,11 @@ export async function createLiteSMCMessage(params: { configPath: string, blockId
     // load signatures and create signs cell
     if (blockProof.steps[0].kind == "liteServer.blockLinkForward") {
         const signatures = blockProof.steps[0].signatures.signatures;
-        console.log(signatures)
+        // console.log(signatures)
         let signDict = Dictionary.empty(Dictionary.Keys.Uint(16), Dictionary.Values.Buffer(64));
         signatures.forEach((item) => {
             let key = validatorMap.get(item.nodeIdShort.toString('base64'));
-            console.log(key);
+            // console.log(key);
             signDict.set(key, item.signature)
         });
         let signCell = beginCell()
@@ -212,19 +217,38 @@ export async function createLiteSMCMessage(params: { configPath: string, blockId
 }
 
 
-export function search(cell: Cell, target: Cell): { found: boolean, path: number[] } {
+export function searchCellTree(cell: Cell, target: Cell): { found: boolean, path: number[] } {
     for (const [index, child] of cell.refs.entries()) {
         if (child.hash().toString('hex') == target.hash().toString('hex')) {
             console.log(index);
             return { found: true, path: [index] };
         } else {
-            const { found, path } = search(child, target);
+            const { found, path } = searchCellTree(child, target);
             if (found) {
                 return { found, path: [index, ...path] };
             }
         }
     }
     return { found: false, path: [] };
+}
+
+
+export function createLiteClientSignsCell(signsFilePath: string, validatorMap: Map<string, number>) {
+    let signs = JSON.parse(fs.readFileSync(signsFilePath, 'utf8'));
+    let signDict = Dictionary.empty(Dictionary.Keys.Uint(16), Dictionary.Values.Buffer(64));
+    signs.result.signatures.forEach((item: SignItem) => {
+        let key = validatorMap.get(item.node_id_short)!;
+        signDict.set(key, Buffer.from(item.signature, 'base64'));
+    });
+
+
+    // create signature cell
+    const fileHash = Buffer.from(signs.result.id.file_hash, "base64");
+    let signCell = beginCell()
+        .storeBuffer(fileHash)
+        .storeDict(signDict)
+        .endCell();
+    return signCell;
 }
 
 
