@@ -5,6 +5,7 @@ import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import { randomAddress } from '@ton/test-utils';
 import { readFileSync } from 'fs';
+import { search } from '../misc/helpers';
 
 describe('TxChecker', () => {
     let code: Cell;
@@ -52,29 +53,25 @@ describe('TxChecker', () => {
         const [transaction] = Cell.fromBoc(readFileSync('misc/tx.boc'));
 
 
-        const accountKey = 23158417847463239084714197001737581570653996933128112807891516801582625927987n;
-        const txKey = 30723252000001n;
-        // create signature map <index in vset config> -> <signature>
+        // construct proof as path to tx in block
+        const { found, path } = search(keyBlock, transaction);
+        let proofCell = beginCell().storeUint(path.length, 16);
+        path.forEach((index) => { proofCell.storeUint(index, 2) });
 
-        let proofCell = beginCell()
-            .storeUint(accountKey, 256)
-            .storeUint(txKey, 64)
-            .endCell();
 
         //send message
         const sender = await blockchain.treasury('sender');
 
         const checkBlockResult = await txChecker.sendCheckTransaction(sender.getSender(), {
             transaction,
-            proof: proofCell,
+            proof: proofCell.endCell(),
             currentBlock: keyBlock,
             value: toNano('0.05'),
         });
-
-        // expect(checkBlockResult.transactions).toHaveTransaction({
-        //     from: sender.address,
-        //     to: txChecker.address,
-        //     success: true,
-        // });
+        expect(checkBlockResult.transactions).toHaveTransaction({
+            from: sender.address,
+            to: txChecker.address,
+            success: true,
+        });
     });
 });

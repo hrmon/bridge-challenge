@@ -210,3 +210,85 @@ export async function createLiteSMCMessage(params: { configPath: string, blockId
     }
 
 }
+
+
+export function search(cell: Cell, target: Cell): { found: boolean, path: number[] } {
+    for (const [index, child] of cell.refs.entries()) {
+        if (child.hash().toString('hex') == target.hash().toString('hex')) {
+            console.log(index);
+            return { found: true, path: [index] };
+        } else {
+            const { found, path } = search(child, target);
+            if (found) {
+                return { found, path: [index, ...path] };
+            }
+        }
+    }
+    return { found: false, path: [] };
+}
+
+
+export function loadAccountBlock(slice: Slice) {
+    if (((slice.remainingBits >= 4) && (slice.preloadUint(4) == 0x5))) {
+        slice.loadUint(4);
+        let account_addr = slice.loadBits(256);
+        let transactions = Dictionary.loadDirect(Dictionary.Keys.BigUint(64), {
+            serialize: () => { throw new Error('Not implemented') },
+            parse: ((slice: Slice) => {
+                slice.loadCoins()
+                slice.loadDict(Dictionary.Keys.Uint(32), Dictionary.Values.BigVarUint(32))
+                let transactionCell = slice.loadRef()
+                return transactionCell
+
+            }),
+        }, slice)
+        return {
+            kind: 'AccountBlock',
+            account_addr: account_addr,
+            transactions: transactions,
+            // state_update: state_update,
+        }
+
+    }
+    throw new Error('Expected one of "AccountBlock" in loading "AccountBlock", but data does not satisfy any constructor');
+}
+
+export function loadShardAccountBlocks(slice: Slice) {
+    let anon0 = Dictionary.load(Dictionary.Keys.BigUint(256), {
+        serialize: () => { throw new Error('Not implemented') },
+        parse: ((slice: Slice) => {
+            slice.loadCoins()
+            slice.loadDict(Dictionary.Keys.Uint(32), Dictionary.Values.BigVarUint(32))
+            // console.log(slice)
+            return {
+                value: loadAccountBlock(slice),
+            }
+
+        }),
+    }, slice);
+    return {
+        kind: 'ShardAccountBlocks',
+        anon0: anon0,
+    }
+
+}
+
+export function loadBlockExtra(slice: Slice) {
+    if (((slice.remainingBits >= 32) && (slice.preloadUint(32) == 0x4a33f6fd))) {
+        slice.loadUint(32);
+        let slice1 = slice.loadRef().beginParse(true);
+        // let in_msg_descr: InMsgDescr = loadInMsgDescr(slice1);
+        let slice2 = slice.loadRef().beginParse(true);
+        // let out_msg_descr: OutMsgDescr = loadOutMsgDescr(slice2);
+        let slice3 = slice.loadRef().beginParse(true);
+        let account_blocks = loadShardAccountBlocks(slice3);
+
+        return {
+            kind: 'BlockExtra',
+            // in_msg_descr: in_msg_descr,
+            // out_msg_descr: out_msg_descr,
+            account_blocks: account_blocks,
+        }
+
+    }
+}
