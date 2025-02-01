@@ -1,12 +1,12 @@
 import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
 
-export type TLBridgeConfig = {
+export type LiteClientConfig = {
     id: number;
     vset: Cell;
     keyBlocks: Cell;
 };
 
-export function tLBridgeConfigToCell(config: TLBridgeConfig): Cell {
+export function liteClientConfigToCell(config: LiteClientConfig): Cell {
     return beginCell().storeUint(config.id, 32).storeRef(config.vset).storeRef(config.keyBlocks).endCell();
 }
 
@@ -16,17 +16,17 @@ export const Opcodes = {
     checkBlock: 0x8eaa9d76,
 };
 
-export class TLBridge implements Contract {
+export class LiteClient implements Contract {
     constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) { }
 
     static createFromAddress(address: Address) {
-        return new TLBridge(address);
+        return new LiteClient(address);
     }
 
-    static createFromConfig(config: TLBridgeConfig, code: Cell, workchain = 0) {
-        const data = tLBridgeConfigToCell(config);
+    static createFromConfig(config: LiteClientConfig, code: Cell, workchain = 0) {
+        const data = liteClientConfigToCell(config);
         const init = { code, data };
-        return new TLBridge(contractAddress(workchain, init), init);
+        return new LiteClient(contractAddress(workchain, init), init);
     }
 
     async sendDeploy(provider: ContractProvider, via: Sender, value: bigint) {

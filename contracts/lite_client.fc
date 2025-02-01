@@ -157,7 +157,7 @@ cell parse_block_extra(cell extra) {
 } 
 
 
-int check_block_info(cell info) {
+int check_block_info(cell info) impure {
   ;; block_info#9bc7a987 version:uint32
   ;;   not_master:(## 1)
   ;;   after_merge:(## 1) before_split:(## 1)
@@ -368,4 +368,9 @@ int check_block_signs(int block_hash, cell signatures) {
 
   ~strdump("done");
   return ();
+}
+
+
+int get_cell_hash(cell data) method_id {
+  return data.cell_hash();
 }

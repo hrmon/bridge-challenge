@@ -2,7 +2,7 @@ import fs from "fs";
 
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { beginCell, Cell, toNano, Dictionary } from '@ton/core';
-import { TLBridge } from '../wrappers/TLBridge';
+import { LiteClient } from '../wrappers/LiteClient';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import { extractValidatorSet, extractValidatorsMap } from "../misc/helpers";
@@ -14,16 +14,16 @@ type SignItem = {
 };
 
 
-describe('TLBridge', () => {
+describe('LiteClient', () => {
     let code: Cell;
 
     beforeAll(async () => {
-        code = await compile('TLBridge');
+        code = await compile('LiteClient');
     });
 
     let blockchain: Blockchain;
     let deployer: SandboxContract<TreasuryContract>;
-    let tLBridge: SandboxContract<TLBridge>;
+    let liteClient: SandboxContract<LiteClient>;
 
     beforeEach(async () => {
 
@@ -31,8 +31,8 @@ describe('TLBridge', () => {
 
         blockchain = await Blockchain.create();
 
-        tLBridge = blockchain.openContract(
-            TLBridge.createFromConfig(
+        liteClient = blockchain.openContract(
+            LiteClient.createFromConfig(
                 {
                     id: 0,
                     vset: vset,
@@ -44,11 +44,11 @@ describe('TLBridge', () => {
 
         deployer = await blockchain.treasury('deployer');
 
-        const deployResult = await tLBridge.sendDeploy(deployer.getSender(), toNano('0.05'));
+        const deployResult = await liteClient.sendDeploy(deployer.getSender(), toNano('0.05'));
 
         expect(deployResult.transactions).toHaveTransaction({
             from: deployer.address,
-            to: tLBridge.address,
+            to: liteClient.address,
             deploy: true,
             success: true,
         });
@@ -56,7 +56,7 @@ describe('TLBridge', () => {
 
     it('should deploy', async () => {
         // the check is done inside beforeEach
-        // blockchain and tLBridge are ready to use
+        // blockchain and liteClient are ready to use
     });
 
     // it('should increase counter', async () => {
@@ -66,7 +66,7 @@ describe('TLBridge', () => {
 
     //         const increaser = await blockchain.treasury('increaser' + i);
 
-    //         const counterBefore = await tLBridge.getCounter();
+    //         const counterBefore = await liteClient.getCounter();
 
     //         console.log('counter before increasing', counterBefore);
 
@@ -74,18 +74,18 @@ describe('TLBridge', () => {
 
     //         console.log('increasing by', increaseBy);
 
-    //         const increaseResult = await tLBridge.sendIncrease(increaser.getSender(), {
+    //         const increaseResult = await liteClient.sendIncrease(increaser.getSender(), {
     //             increaseBy,
     //             value: toNano('0.05'),
     //         });
 
     //         expect(increaseResult.transactions).toHaveTransaction({
     //             from: increaser.address,
-    //             to: tLBridge.address,
+    //             to: liteClient.address,
     //             success: true,
     //         });
 
-    //         const counterAfter = await tLBridge.getCounter();
+    //         const counterAfter = await liteClient.getCounter();
 
     //         console.log('counter after increasing', counterAfter);
 
@@ -103,7 +103,7 @@ describe('TLBridge', () => {
 
     //     const increaser = await blockchain.treasury('increaser');
 
-    //     const increaseResult = await tLBridge.sendNewKeyBlock(increaser.getSender(), {
+    //     const increaseResult = await liteClient.sendNewKeyBlock(increaser.getSender(), {
     //         block,
     //         signatures: beginCell().endCell(),
     //         value: toNano('0.05'),
@@ -111,7 +111,7 @@ describe('TLBridge', () => {
 
     //     expect(increaseResult.transactions).toHaveTransaction({
     //         from: increaser.address,
-    //         to: tLBridge.address,
+    //         to: liteClient.address,
     //         success: true,
     //     });
 
@@ -147,7 +147,7 @@ describe('TLBridge', () => {
         //send message
         const sender = await blockchain.treasury('sender');
 
-        const keyBlockResult = await tLBridge.sendNewKeyBlock(sender.getSender(), {
+        const keyBlockResult = await liteClient.sendNewKeyBlock(sender.getSender(), {
             block,
             signatures: signCell,
             value: toNano('0.05'),
@@ -155,7 +155,7 @@ describe('TLBridge', () => {
 
         expect(keyBlockResult.transactions).toHaveTransaction({
             from: sender.address,
-            to: tLBridge.address,
+            to: liteClient.address,
             success: true,
         });
     });
@@ -189,7 +189,7 @@ describe('TLBridge', () => {
         //send message
         const sender = await blockchain.treasury('sender');
 
-        const checkBlockResult = await tLBridge.sendCheckBlock(sender.getSender(), {
+        const checkBlockResult = await liteClient.sendCheckBlock(sender.getSender(), {
             block,
             signatures: signCell,
             value: toNano('0.05'),
@@ -197,7 +197,7 @@ describe('TLBridge', () => {
 
         expect(checkBlockResult.transactions).toHaveTransaction({
             from: sender.address,
-            to: tLBridge.address,
+            to: liteClient.address,
             success: true,
         });
     });
