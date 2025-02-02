@@ -5,7 +5,7 @@ import { beginCell, Cell, toNano, Dictionary } from '@ton/core';
 import { LiteClient } from '../wrappers/LiteClient';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { createLiteClientSignsCell, extractValidatorSet, extractValidatorsMap } from "../misc/helpers";
+import { loadSignsCellfromFile, extractValidatorSet, extractValidatorsMap } from "../misc/helpers";
 
 
 describe('LiteClient', () => {
@@ -21,7 +21,7 @@ describe('LiteClient', () => {
 
     beforeEach(async () => {
 
-        const vset = extractValidatorSet('misc/key_block.boc');
+        const vset = extractValidatorSet('tests/data/key_block.boc');
 
         blockchain = await Blockchain.create();
 
@@ -113,14 +113,14 @@ describe('LiteClient', () => {
 
     it('accept new key block', async () => {
 
-        const [keyBlock] = Cell.fromBoc(fs.readFileSync('misc/key_block.boc'));
+        const [keyBlock] = Cell.fromBoc(fs.readFileSync('tests/data/key_block.boc'));
         const validatorMap = extractValidatorsMap(keyBlock);
 
         // create signature map <index in vset config> -> <signature>
-        let signCell = createLiteClientSignsCell('misc/signs_key_block.json', validatorMap);
+        let signCell = loadSignsCellfromFile('tests/data/signs_key_block.json', validatorMap);
 
         // Bag-of-cells
-        const buf = fs.readFileSync('misc/key_block.boc');
+        const buf = fs.readFileSync('tests/data/key_block.boc');
         const cells = Cell.fromBoc(buf);
         const block = cells[0];
 
@@ -141,15 +141,15 @@ describe('LiteClient', () => {
     });
 
     it('check block', async () => {
-        const [keyBlock] = Cell.fromBoc(fs.readFileSync('misc/key_block.boc'));
+        const [keyBlock] = Cell.fromBoc(fs.readFileSync('tests/data/key_block.boc'));
         const validatorMap = extractValidatorsMap(keyBlock);
 
 
         // create signature map <index in vset config> -> <signature>
-        let signCell = createLiteClientSignsCell('misc/signs_block.json', validatorMap);
+        let signCell = loadSignsCellfromFile('tests/data/signs_block.json', validatorMap);
 
         // load block
-        const buf = fs.readFileSync('misc/block.boc');
+        const buf = fs.readFileSync('tests/data/block.boc');
         const cells = Cell.fromBoc(buf);
         const block = cells[0];
 

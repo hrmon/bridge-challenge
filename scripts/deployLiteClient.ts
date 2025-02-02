@@ -5,16 +5,19 @@ import { extractValidatorSet } from '../misc/helpers';
 
 export async function run(provider: NetworkProvider) {
 
-
-    const vset = extractValidatorSet('misc/key_block.boc');
+    const ui = provider.ui();
+    const keyBlockPath = await ui.input('Key block path');
+    const vset = extractValidatorSet(keyBlockPath);
+    const id = Math.floor(Math.random() * 10000);
     const liteClient = provider.open(
         LiteClient.createFromConfig(
             {
-                id: Math.floor(Math.random() * 10000),
+                id,
                 vset: vset,
                 keyBlocks: beginCell().endCell()
             },
-            await compile('LiteClient')
+            await compile('LiteClient'),
+            -1
         )
     );
 
@@ -22,5 +25,6 @@ export async function run(provider: NetworkProvider) {
 
     await provider.waitForDeploy(liteClient.address);
 
-    console.log('ID', await liteClient.getID());
+    console.log('Address ', liteClient.address);
+    console.log('ID', id);
 }

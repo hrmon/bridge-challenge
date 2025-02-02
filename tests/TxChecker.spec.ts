@@ -1,11 +1,10 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { Address, beginCell, Cell, toNano } from '@ton/core';
+import { beginCell, Cell, toNano } from '@ton/core';
 import { TxChecker } from '../wrappers/TxChecker';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { randomAddress } from '@ton/test-utils';
 import { readFileSync } from 'fs';
-import { createLiteClientSignsCell, extractValidatorsMap, searchCellTree } from '../misc/helpers';
+import { loadSignsCellfromFile, extractValidatorsMap, searchCellTree } from '../misc/helpers';
 
 describe('TxChecker', () => {
     let code: Cell;
@@ -50,13 +49,13 @@ describe('TxChecker', () => {
     });
 
     it('should check transaction', async () => {
-        const [keyBlock] = Cell.fromBoc(readFileSync('misc/key_block.boc'));
-        const [transaction] = Cell.fromBoc(readFileSync('misc/tx.boc'));
+        const [keyBlock] = Cell.fromBoc(readFileSync('tests/data/key_block.boc'));
+        const [transaction] = Cell.fromBoc(readFileSync('tests/data/tx.boc'));
 
 
         // create block cell
         const validatorMap = extractValidatorsMap(keyBlock);
-        const signCell = createLiteClientSignsCell('misc/signs_key_block.json', validatorMap);
+        const signCell = loadSignsCellfromFile('tests/data/signs_key_block.json', validatorMap);
         const blockCell = beginCell().storeRef(keyBlock).storeRef(signCell).endCell();
 
 

@@ -1,11 +1,11 @@
-import fs, { readFileSync } from "fs";
+import { readFileSync } from "fs";
 
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { beginCell, Cell, toNano, Dictionary } from '@ton/core';
+import { beginCell, Cell, toNano } from '@ton/core';
 import { LiteClient } from '../wrappers/LiteClient';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { createLiteClientSignsCell, extractValidatorSet, extractValidatorsMap, searchCellTree } from "../misc/helpers";
+import { loadSignsCellfromFile, extractValidatorSet, extractValidatorsMap, searchCellTree } from "../misc/helpers";
 import { TxChecker } from "../wrappers/TxChecker";
 
 
@@ -31,7 +31,7 @@ describe('integration', () => {
 
     beforeEach(async () => {
 
-        const vset = extractValidatorSet('misc/key_block.boc');
+        const vset = extractValidatorSet('tests/data/key_block.boc');
 
         blockchain = await Blockchain.create();
 
@@ -80,13 +80,13 @@ describe('integration', () => {
     });
 
     it('check block', async () => {
-        const [keyBlock] = Cell.fromBoc(readFileSync('misc/key_block.boc'));
-        const [transaction] = Cell.fromBoc(readFileSync('misc/tx.boc'));
+        const [keyBlock] = Cell.fromBoc(readFileSync('tests/data/key_block.boc'));
+        const [transaction] = Cell.fromBoc(readFileSync('tests/data/tx.boc'));
 
 
         // create block cell
         const validatorMap = extractValidatorsMap(keyBlock);
-        const signCell = createLiteClientSignsCell('misc/signs_key_block.json', validatorMap);
+        const signCell = loadSignsCellfromFile('tests/data/signs_key_block.json', validatorMap);
         const blockCell = beginCell().storeRef(keyBlock).storeRef(signCell).endCell();
 
 
@@ -105,23 +105,34 @@ describe('integration', () => {
             currentBlock: blockCell,
             value: toNano('1'),
         });
-        console.log(sender.address)
-        console.log(liteClient.address)
-        console.log(txChecker.address)
-        checkTxResult.transactions.forEach((tx) => {
-            console.log(tx.inMessage!.info)
-            if (tx.description.type == "generic") {
-                console.log(tx.description.computePhase)
-                console.log(tx.description.actionPhase)
-            }
-            // tx.outMessages.values().forEach((msg) => {
-            //     console.log(msg.info);
-            // })
-        })
-        // expect(checkTxResult.transactions).toHaveTransaction({
-        //     from: sender.address,
-        //     to: txChecker.address,
-        //     success: true,
-        // });
+        // console.log(sender.address)
+        // console.log(liteClient.address)
+        // console.log(txChecker.address)
+        // checkTxResult.transactions.forEach((tx) => {
+        //     console.log(tx.inMessage!.info)
+        //     if (tx.description.type == "generic") {
+        //         console.log(tx.description.computePhase)
+        //         console.log(tx.description.actionPhase)
+        //     }
+        //     // tx.outMessages.values().forEach((msg) => {
+        //     //     console.log(msg.info);
+        //     // })
+        // })
+        expect(checkTxResult.transactions).toHaveTransaction({
+            from: sender.address,
+            to: txChecker.address,
+            success: true,
+        });
+        expect(checkTxResult.transactions).toHaveTransaction({
+            from: txChecker.address,
+            to: liteClient.address,
+            success: true,
+        });
+        expect(checkTxResult.transactions).toHaveTransaction({
+            from: liteClient.address,
+            to: txChecker.address,
+            success: true,
+            inMessageBounced: false
+        });
     });
 });

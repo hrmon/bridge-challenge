@@ -1,11 +1,11 @@
 
-import fs from "fs";
+import fs, { readFileSync } from "fs";
 
-import { beginCell, Cell, toNano, Dictionary, Slice } from '@ton/core';
+import { beginCell, Cell, toNano, Dictionary, Slice, Address } from '@ton/core';
 import '@ton/test-utils';
 import { sha256_sync } from "@ton/crypto";
 import { LiteClient, LiteRoundRobinEngine, LiteSingleEngine, LiteEngine } from "ton-lite-client";
-import { Functions, liteServer_BlockData, liteServer_getBlockProof } from "ton-lite-client/dist/schema";
+import { Functions, liteServer_BlockData, liteServer_getBlockProof, liteServer_partialBlockProof, tonNode_BlockIdExt } from "ton-lite-client/dist/schema";
 
 
 export type LiteServer = {
@@ -146,39 +146,12 @@ export function extractValidatorSet(keyBlockPath: string) {
 }
 
 
-
-export async function createLiteSMCMessage(params: { configPath: string, blockIdRepr?: string }) {
-    const config = JSON.parse(fs.readFileSync(params.configPath, "utf8"));
-
-    const { client, engine } = createLiteClient(config.liteservers)
-
-    // get requested block id or the last block
-    let blockId;
-    if (params.blockIdRepr) {
-        const [workchain, shard, seqno] = params.blockIdRepr.split(',');
-        const blockHeader = await client.lookupBlockByID({ seqno: parseInt(seqno), shard, workchain: parseInt(workchain) })
-        blockId = blockHeader.id;
-    }
-    else {
-        const master = await client.getMasterchainInfo()
-        // console.log('master', master)
-        blockId = master.last;
-    }
-
-    // get and load block cell
-    const block = await engine.query(Functions.liteServer_getBlock, {
-        kind: "liteServer.getBlock",
-        id: blockId,
-    });
-
-    // console.log(block);
-    const [rootCell] = Cell.fromBoc(block.data);
-
-    // get prev key block id
-    const infoCell = rootCell.refs[0];
+export async function getBlockProof(blockCell: Cell, blockId: tonNode_BlockIdExt, client: { client: LiteClient, engine: LiteEngine }) {
+    const infoCell = blockCell.refs[0];
     const { prev_key_block_seqno } = loadBlockInfo(infoCell.beginParse())
-    const prevKeyBlockHeader = await client.lookupBlockByID({ seqno: prev_key_block_seqno, shard: "8000000000000000", workchain: -1 })
-    const prevKeyBlock = await engine.query(Functions.liteServer_getBlock, {
+    const prevKeyBlockHeader = await client.client.lookupBlockByID(
+        { seqno: prev_key_block_seqno, shard: "8000000000000000", workchain: -1 })
+    const prevKeyBlock = await client.engine.query(Functions.liteServer_getBlock, {
         kind: "liteServer.getBlock",
         id: prevKeyBlockHeader.id,
     });
@@ -187,32 +160,98 @@ export async function createLiteSMCMessage(params: { configPath: string, blockId
     // extract validator map
     const validatorMap = extractValidatorsMap(keyBlockCell);
     // get block proof from prev key block
-    const blockProof = await engine.query(Functions.liteServer_getBlockProof, {
+    const blockProof = await client.engine.query(Functions.liteServer_getBlockProof, {
         kind: "liteServer.getBlockProof",
         knownBlock: prevKeyBlockHeader.id,
         targetBlock: blockId,
         mode: 1
     });
-    // load signatures and create signs cell
+    return { blockProof, validatorMap }
+}
+
+export async function retrieveBlock(client: { client: LiteClient, engine: LiteEngine }, blockIdRepr?: string) {
+    let blockId;
+    if (!!blockIdRepr) {
+        const [workchain, shard, seqno] = blockIdRepr.split(',');
+        const blockHeader = await client.client.lookupBlockByID({ seqno: parseInt(seqno), shard, workchain: parseInt(workchain) })
+        blockId = blockHeader.id;
+    }
+    else {
+        const master = await client.client.getMasterchainInfo()
+        // console.log('master', master)
+        blockId = master.last;
+    }
+
+    // get and load block cell
+    const block = await client.engine.query(Functions.liteServer_getBlock, {
+        kind: "liteServer.getBlock",
+        id: blockId,
+    });
+
+    // console.log(block);
+    const [rootCell] = Cell.fromBoc(block.data);
+    return { blockId, rootCell };
+}
+
+
+export function createSignsCell(blockProof: liteServer_partialBlockProof, validatorMap: Map<string, number>) {
     if (blockProof.steps[0].kind == "liteServer.blockLinkForward") {
         const signatures = blockProof.steps[0].signatures.signatures;
         // console.log(signatures)
         let signDict = Dictionary.empty(Dictionary.Keys.Uint(16), Dictionary.Values.Buffer(64));
         signatures.forEach((item) => {
-            let key = validatorMap.get(item.nodeIdShort.toString('base64'));
+            let key = validatorMap.get(item.nodeIdShort.toString('base64'))!;
             // console.log(key);
             signDict.set(key, item.signature)
         });
+
         let signCell = beginCell()
-            .storeBuffer(block.id.fileHash)
+            .storeBuffer(blockProof.to.fileHash)
             .storeDict(signDict)
             .endCell();
-
-        return { signatures: signCell, block: rootCell }
+        return signCell;
     }
     else {
         throw new Error("Signatures not found!")
     }
+}
+
+
+export async function retrieveTransaction(configPath: string, txAddr: { blockIdRepr: string, address: string, logicalTime: string }) {
+    const [workchain, shard, seqno] = txAddr.blockIdRepr.split(',');
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+
+    const { client, engine } = createLiteClient(config.liteservers)
+
+    // get prev key block
+    const txBlockHeader = await client.lookupBlockByID({
+        seqno: parseInt(seqno), shard, workchain: parseInt(workchain)
+    })
+
+    // TODO: TonClient.getContractState
+    const txAccountAddress = Address.parse(txAddr.address);
+    const txWithProof = await client.getAccountTransaction(
+        txAccountAddress,
+        txAddr.logicalTime,
+        txBlockHeader.id,
+    );
+    const [txCell] = Cell.fromBoc(txWithProof.transaction);
+    return { txCell, txInfo: txWithProof }
+}
+
+
+export async function createLiteSMCMessage(params: { configPath: string, blockIdRepr?: string }) {
+    const config = JSON.parse(fs.readFileSync(params.configPath, "utf8"));
+
+    const { client, engine } = createLiteClient(config.liteservers);
+    const { blockId, rootCell } = await retrieveBlock({ client, engine }, params.blockIdRepr);
+    const { blockProof, validatorMap } = await getBlockProof(rootCell, blockId, { client, engine });
+
+
+    // load signatures and create signs cell
+    const signsCell = createSignsCell(blockProof, validatorMap);
+
+    return { signatures: signsCell, block: rootCell }
 
 }
 
@@ -233,7 +272,7 @@ export function searchCellTree(cell: Cell, target: Cell): { found: boolean, path
 }
 
 
-export function createLiteClientSignsCell(signsFilePath: string, validatorMap: Map<string, number>) {
+export function loadSignsCellfromFile(signsFilePath: string, validatorMap: Map<string, number>) {
     let signs = JSON.parse(fs.readFileSync(signsFilePath, 'utf8'));
     let signDict = Dictionary.empty(Dictionary.Keys.Uint(16), Dictionary.Values.Buffer(64));
     signs.result.signatures.forEach((item: SignItem) => {
