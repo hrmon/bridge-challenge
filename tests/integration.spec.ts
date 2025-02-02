@@ -9,12 +9,6 @@ import { loadSignsCellfromFile, extractValidatorSet, extractValidatorsMap, searc
 import { TxChecker } from "../wrappers/TxChecker";
 
 
-type SignItem = {
-    node_id_short: string;
-    signature: string;
-};
-
-
 describe('integration', () => {
     let liteClientCode: Cell;
     let txCheckerCode: Cell;

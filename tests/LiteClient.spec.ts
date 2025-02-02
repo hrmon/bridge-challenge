@@ -53,64 +53,6 @@ describe('LiteClient', () => {
         // blockchain and liteClient are ready to use
     });
 
-    // it('should increase counter', async () => {
-    //     const increaseTimes = 3;
-    //     for (let i = 0; i < increaseTimes; i++) {
-    //         console.log(`increase ${i + 1}/${increaseTimes}`);
-
-    //         const increaser = await blockchain.treasury('increaser' + i);
-
-    //         const counterBefore = await liteClient.getCounter();
-
-    //         console.log('counter before increasing', counterBefore);
-
-    //         const increaseBy = Math.floor(Math.random() * 100);
-
-    //         console.log('increasing by', increaseBy);
-
-    //         const increaseResult = await liteClient.sendIncrease(increaser.getSender(), {
-    //             increaseBy,
-    //             value: toNano('0.05'),
-    //         });
-
-    //         expect(increaseResult.transactions).toHaveTransaction({
-    //             from: increaser.address,
-    //             to: liteClient.address,
-    //             success: true,
-    //         });
-
-    //         const counterAfter = await liteClient.getCounter();
-
-    //         console.log('counter after increasing', counterAfter);
-
-    //         expect(counterAfter).toBe(counterBefore + increaseBy);
-    //     }
-    // });
-
-    // it('load config 32', async () => {
-    //     const buf = fs.readFileSync('block.boc'); 
-    //     // load a list of cells
-    //     const cells = Cell.fromBoc(buf);
-    //     // get first cell
-    //     const block = cells[0];
-
-
-    //     const increaser = await blockchain.treasury('increaser');
-
-    //     const increaseResult = await liteClient.sendNewKeyBlock(increaser.getSender(), {
-    //         block,
-    //         signatures: beginCell().endCell(),
-    //         value: toNano('0.05'),
-    //     });
-
-    //     expect(increaseResult.transactions).toHaveTransaction({
-    //         from: increaser.address,
-    //         to: liteClient.address,
-    //         success: true,
-    //     });
-
-    // });
-
     it('accept new key block', async () => {
 
         const [keyBlock] = Cell.fromBoc(fs.readFileSync('tests/data/key_block.boc'));
