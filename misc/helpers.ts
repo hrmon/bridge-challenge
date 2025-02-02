@@ -1,12 +1,16 @@
 
 import fs, { readFileSync } from "fs";
 
-import { beginCell, Cell, toNano, Dictionary, Slice, Address } from '@ton/core';
+import { beginCell, Cell, Dictionary, Slice, Address } from '@ton/core';
 import '@ton/test-utils';
 import { sha256_sync } from "@ton/crypto";
 import { LiteClient, LiteRoundRobinEngine, LiteSingleEngine, LiteEngine } from "ton-lite-client";
-import { Functions, liteServer_BlockData, liteServer_getBlockProof, liteServer_partialBlockProof, tonNode_BlockIdExt } from "ton-lite-client/dist/schema";
+import { Functions, liteServer_partialBlockProof, tonNode_BlockIdExt } from "ton-lite-client/dist/schema";
 
+import { InquirerUIProvider } from '@ton/blueprint/dist/ui/InquirerUIProvider';
+import { TonClient, WalletContractV4 } from '@ton/ton';
+import { mnemonicToPrivateKey } from '@ton/crypto';
+import { sleep, UIProvider } from "@ton/blueprint";
 
 export type LiteServer = {
     ip: number,
@@ -139,7 +143,7 @@ export function extractValidatorSet(keyBlockPath: string) {
     const config = Dictionary.loadDirect(
         Dictionary.Keys.Uint(32),
         Dictionary.Values.Cell(),
-        mcExtra.refs[3]
+        mcExtra.refs[mcExtra.refs.length - 1]
     );
     const vset = config.get(34)!;
     return vset;
@@ -259,7 +263,6 @@ export async function createLiteSMCMessage(params: { configPath: string, blockId
 export function searchCellTree(cell: Cell, target: Cell): { found: boolean, path: number[] } {
     for (const [index, child] of cell.refs.entries()) {
         if (child.hash().toString('hex') == target.hash().toString('hex')) {
-            console.log(index);
             return { found: true, path: [index] };
         } else {
             const { found, path } = searchCellTree(child, target);
@@ -288,6 +291,50 @@ export function loadSignsCellfromFile(signsFilePath: string, validatorMap: Map<s
         .storeDict(signDict)
         .endCell();
     return signCell;
+}
+
+
+export async function createAltProvider() {
+    const ui = new InquirerUIProvider();
+
+    // const ui = provider.ui();
+    const endpoint = await ui.input('Endpoint');
+    const client = new TonClient({
+        endpoint: endpoint,
+        apiKey: process.env.TONCENTER_APIKEY || undefined,
+    });
+
+    // Generate new key
+    let mnemonics = process.env.WALLET_MNEMONIC!.split(' ')
+    let keyPair = await mnemonicToPrivateKey(mnemonics);
+
+    // Create wallet contract
+    let workchain = parseInt(await ui.input('Workchain')); // Usually you need a workchain 0
+    let wallet = WalletContractV4.create({ workchain, publicKey: keyPair.publicKey });
+    let walletContract = client.open(wallet);
+    return { ui, client, workchain, keyPair, wallet: walletContract };
+}
+
+
+export async function waitForDeploy(
+    address: Address,
+    provider: { ui: UIProvider, client: TonClient },
+    attempts = 20, sleepDuration = 2000) {
+
+    if (attempts <= 0) {
+        throw new Error('Attempt number must be positive');
+    }
+    for (let i = 1; i <= attempts; i++) {
+        provider.ui.setActionPrompt(`Awaiting contract deployment... [Attempt ${i}/${attempts}]`);
+        const isDeployed = (await provider.client.provider(address).getState()).state.type === 'active';
+        if (isDeployed) {
+            // provider.ui.clearActionPrompt();
+            provider.ui.write(`Contract deployed at address ${address.toString()}`);
+            return;
+        }
+        await sleep(sleepDuration);
+    }
+    throw new Error("Contract was not deployed. Check your wallet's transactions");
 }
 
 

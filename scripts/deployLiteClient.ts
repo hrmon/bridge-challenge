@@ -6,7 +6,7 @@ import { extractValidatorSet } from '../misc/helpers';
 export async function run(provider: NetworkProvider) {
 
     const ui = provider.ui();
-    const keyBlockPath = await ui.input('Key block path');
+    const keyBlockPath = await ui.input('Counterparty chain key block path');
     const vset = extractValidatorSet(keyBlockPath);
     const id = Math.floor(Math.random() * 10000);
     const liteClient = provider.open(
