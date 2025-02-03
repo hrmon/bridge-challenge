@@ -51,12 +51,7 @@ export function createLiteClient(liteservers: LiteServer[]) {
 
 
 export function extractValidatorsMap(block: Cell) {
-
-    const extra = block.refs[3]
-    const mcExtra = extra.refs[3]
-    const config = Dictionary.loadDirect(Dictionary.Keys.Uint(32), Dictionary.Values.Cell(), mcExtra.refs[3])
-
-    const vset = config.get(34)!;
+    const vset = extractCurrentVsetConfig(block);
     const vsets = vset.beginParse()
     vsets.loadUintBig(8 + 32 + 32 + 16 + 16 + 64)
     const list = vsets.loadDict(Dictionary.Keys.Uint(16), Dictionary.Values.Buffer(1 + 4 + 32 + 8))
@@ -134,10 +129,7 @@ export function loadBlockInfo(slice: Slice) {
 }
 
 
-export function extractValidatorSet(keyBlockPath: string) {
-    const buf = fs.readFileSync(keyBlockPath);
-    const cells = Cell.fromBoc(buf);
-    const block = cells[0];
+export function extractCurrentVsetConfig(block: Cell) {
     const extra = block.refs[3];
     const mcExtra = extra.refs[3];
     const config = Dictionary.loadDirect(
@@ -147,6 +139,11 @@ export function extractValidatorSet(keyBlockPath: string) {
     );
     const vset = config.get(34)!;
     return vset;
+}
+
+export function extractValidatorSet(keyBlockPath: string) {
+    const [block] = Cell.fromBoc(fs.readFileSync(keyBlockPath));
+    return extractCurrentVsetConfig(block);
 }
 
 

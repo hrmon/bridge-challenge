@@ -91,7 +91,80 @@ describe('LiteClient', () => {
         let signCell = loadSignsCellfromFile('tests/data/signs_block.json', validatorMap);
 
         // load block
-        const buf = fs.readFileSync('tests/data/block.boc');
+        const [block] = Cell.fromBoc(fs.readFileSync('tests/data/block.boc'));
+
+        //send message
+        const sender = await blockchain.treasury('sender');
+
+        const checkBlockResult = await liteClient.sendCheckBlock(sender.getSender(), {
+            block,
+            signatures: signCell,
+            value: toNano('0.05'),
+        });
+
+        expect(checkBlockResult.transactions).toHaveTransaction({
+            from: sender.address,
+            to: liteClient.address,
+            success: true,
+        });
+    });
+});
+
+
+describe('LiteClientFastNet', () => {
+    let code: Cell;
+
+    beforeAll(async () => {
+        code = await compile('LiteClient');
+    });
+
+    let blockchain: Blockchain;
+    let deployer: SandboxContract<TreasuryContract>;
+    let liteClient: SandboxContract<LiteClient>;
+
+    beforeEach(async () => {
+        const vset = extractValidatorSet('tests/data/fastnet_keyblock.boc');
+
+        blockchain = await Blockchain.create();
+
+        liteClient = blockchain.openContract(
+            LiteClient.createFromConfig(
+                {
+                    id: 0,
+                    vset: vset,
+                    keyBlocks: beginCell().endCell(),
+                },
+                code
+            )
+        );
+
+        deployer = await blockchain.treasury('deployer');
+
+        const deployResult = await liteClient.sendDeploy(deployer.getSender(), toNano('0.05'));
+
+        expect(deployResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: liteClient.address,
+            deploy: true,
+            success: true,
+        });
+    });
+
+    it('should deploy', async () => {
+        // the check is done inside beforeEach
+        // blockchain and liteClient are ready to use
+    });
+
+    it('check block', async () => {
+        const [keyBlock] = Cell.fromBoc(fs.readFileSync('tests/data/fastnet_keyblock.boc'));
+        const validatorMap = extractValidatorsMap(keyBlock);
+
+
+        // create signature map <index in vset config> -> <signature>
+        let signCell = loadSignsCellfromFile('tests/data/signs_fastnet_keyblock.json', validatorMap);
+
+        // load block
+        const buf = fs.readFileSync('tests/data/fastnet_keyblock.boc');
         const cells = Cell.fromBoc(buf);
         const block = cells[0];
 

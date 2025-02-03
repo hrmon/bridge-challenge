@@ -1,0 +1,22 @@
+{
+    "ok": true,
+    "result": {
+        "@type": "blocks.blockSignatures",
+        "id": {
+            "@type": "ton.blockIdExt",
+            "workchain": -1,
+            "shard": "-9223372036854775808",
+            "seqno": 680647,
+            "root_hash": "9tk1j5OT9S3Xx4bBLK3G/VzipgWh72SPGDWHaPPPXcE=",
+            "file_hash": "sgk1toSzGRg9Ws1QKM65h+kreNtHl4OHMokr1//XAS8="
+        },
+        "signatures": [
+            {
+                "@type": "blocks.signature",
+                "node_id_short": "yq08Lnyda3+i8vM0rgLCwHpwYxIw2wp7Z8jPik/rwwA=",
+                "signature": "peCszRyY1A/GVwSoxUlCeg/wvRkU6kRI+9HkN2AnF2/Yt8uFDbvAI31r+02um0mGgqruNROxke604wQ95kRkBQ=="
+            }
+        ],
+        "@extra": "1738564443.560014:0:0.31853683011137357"
+    }
+}
