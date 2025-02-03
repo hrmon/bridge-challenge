@@ -1,7 +1,7 @@
 import fs from "fs";
 
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { beginCell, Cell, toNano, Dictionary } from '@ton/core';
+import { beginCell, Cell, toNano, Dictionary, convertToMerkleProof } from '@ton/core';
 import { LiteClient } from '../wrappers/LiteClient';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
@@ -108,6 +108,41 @@ describe('LiteClient', () => {
             success: true,
         });
     });
+
+    it('check pruned cell', async () => {
+        const [keyBlock] = Cell.fromBoc(fs.readFileSync('tests/data/key_block.boc'));
+        const validatorMap = extractValidatorsMap(keyBlock);
+
+
+        // create signature map <index in vset config> -> <signature>
+        let signCell = loadSignsCellfromFile('tests/data/signs_block.json', validatorMap);
+
+        // load block
+        const [block] = Cell.fromBoc(fs.readFileSync('tests/data/block.boc'));
+        const newCell = beginCell()
+            .storeBits(block.bits)
+            .storeRef(block.refs[0])
+            .storeRef(convertToMerkleProof(block.refs[1]))
+            .storeRef(block.refs[2])
+            .storeRef(block.refs[3])
+            .endCell();
+
+        //send message
+        const sender = await blockchain.treasury('sender');
+
+        const checkBlockResult = await liteClient.sendCheckBlock(sender.getSender(), {
+            block: newCell,
+            signatures: signCell,
+            value: toNano('0.05'),
+        });
+
+        expect(checkBlockResult.transactions).toHaveTransaction({
+            from: sender.address,
+            to: liteClient.address,
+            success: true,
+        });
+    });
+
 });
 
 
