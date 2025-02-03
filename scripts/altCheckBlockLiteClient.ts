@@ -7,8 +7,8 @@ export async function main() {
     const provider = await createAltProvider();
 
     const configPath = await provider.ui.input('Counterparty chain config path');
-    const address = Address.parse(await provider.ui.input('LiteClient contract address'));
     const blockIdRepr = await provider.ui.input('Block id (wc,shard,seqno)');
+    const address = Address.parse(await provider.ui.input('LiteClient contract address'));
     const liteClient = provider.client.open(LiteClient.createFromAddress(address));
 
     const { signatures, block } = await createLiteSMCMessage({ configPath, blockIdRepr })

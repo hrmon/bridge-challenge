@@ -29,4 +29,4 @@ export async function main() {
     console.log('ID ', id);
 }
 
-main().then(() => { process.exit() });
+main().then(() => { process.exit() }).catch((error) => { console.log(error); });

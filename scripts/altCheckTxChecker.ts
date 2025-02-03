@@ -30,10 +30,10 @@ export async function main() {
         transaction: txCell,
         proof: proofCell.endCell(),
         currentBlock: beginCell().storeRef(block).storeRef(signatures).endCell(),
-        value: toNano('0.5'),
+        value: toNano('1'),
     });
 
     provider.ui.write('Check Requested...');
 }
 
-main().then(() => { process.exit() });
+main().then(() => { process.exit() }).catch((error) => { console.log(error); });
