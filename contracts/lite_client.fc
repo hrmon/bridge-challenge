@@ -1,4 +1,5 @@
 #include "imports/stdlib.fc";
+#include "imports/utils.fc";
 
 global cell ctx_cur_list, int ctx_utime_since,  int ctx_utime_until, int ctx_total_weight;
 
@@ -9,89 +10,6 @@ const int tag::ok = 0xff8ff4e1;
 const int tag::correct = 0xce02b807;
 const int config_params::current_validators_set = 34;
 
-int cell_level_mask(cell c) asm "CLEVELMASK";
-int cell_level(cell c) asm "CLEVEL";
-(slice, int) xbegin_parse(cell c) asm "XCTOS";
-forall X -> tuple seti(tuple t, X v, int i) asm "SETINDEXVARQ";
-
-int concat4_sha256(builder b1, builder b2, builder b3, builder b4, builder b5, builder b6, builder b7, int no) asm "HASHEXT_SHA256";
-int concat3_sha256(builder b1, builder b2, builder b3, builder b4, builder b5, builder b6, int no) asm "HASHEXT_SHA256";
-int concat2_sha256(builder b1, builder b2, builder b3, builder b4, builder b5, int no) asm "HASHEXT_SHA256";
-int concat1_sha256(builder b1, builder b2, builder b3, builder b4, int no) asm "HASHEXT_SHA256";
-
-
-
-builder store_slice_padded(builder b, slice s) {
-  int sbits = s.slice_bits();
-  b = b.store_slice(s);
-
-  int rem = sbits % 8;
-  if (rem > 0) {
-    rem = 8 - rem;
-    b = b.store_uint((1 << (rem - 1)) , rem);
-  }
-  return b;
-}
-
-(int, int) calc_cell_hash(cell c, int dive) {
-  (var cs, int is_exotic?) = c.xbegin_parse();
-  ;; ~strdump("start here");
-  if (is_exotic?) {
-    int ctype = cs~load_uint(8);
-    if (ctype == 3) {
-      ;; ~strdump("proof");
-      int hash = cs~load_uint(256);
-      int depth = cs~load_uint(16);
-      return (hash, depth);
-    }
-
-    ;; org
-    return (c.cell_hash(), c.cell_depth());
-  }
-  if (dive == 0) {
-    return (c.cell_hash(), c.cell_depth());
-  }
-  ;; ~dump(is_exotic?);
-  int sbits = cs.slice_bits();
-  int srefs = cs.slice_refs();
-  int ref_desc = srefs + 0 * 8 + (c.cell_level_mask() * 32);
-  int bits_desc = sbits / 8 + sbits ^/ 8;
-  ;; ~strdump("descs");
-  ;; ~dump(ref_desc);
-  ;; ~dump(bits_desc);
-  var head = begin_cell().store_uint(ref_desc, 8).store_uint(bits_desc, 8);
-
-  var refs_head = begin_cell();
-  var refs_hash = empty_tuple();
-  repeat(srefs) {
-    var ref = cs~load_ref();
-    (int hash, int depth) = calc_cell_hash(ref, dive - 1);
-    ;; ~dump(hash);
-    ;; ~dump(depth);
-
-    refs_head = refs_head.store_uint(depth, 16);
-    ;; ~dump(hash);
-    refs_hash~tpush(begin_cell().store_uint(hash, 256));
-    ;; ~strdump("ref hash saved");
-  }
-  var body = begin_cell().store_slice_padded(cs);
-  int fhash = 0;
-  ;; ~strdump("go go");
-  if (srefs == 4) {
-    fhash = concat4_sha256(head, body, refs_head, refs_hash.at(0),refs_hash.at(1),refs_hash.at(2),refs_hash.at(3), 7);
-  }
-  if (srefs == 3) {
-    fhash = concat3_sha256(head, body, refs_head, refs_hash.at(0),refs_hash.at(1),refs_hash.at(2), 6);
-  }
-  if (srefs == 2) {
-    fhash = concat2_sha256(head, body, refs_head, refs_hash.at(0),refs_hash.at(1), 5);
-  }
-  if (srefs == 1) {
-    fhash = concat1_sha256(head, body, refs_head, refs_hash.at(0), 4);
-  }
-  return (fhash, c.cell_depth());
-
-}
 
 (cell, cell) load_data() impure inline_ref {
   slice cs = get_data().begin_parse();

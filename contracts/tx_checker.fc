@@ -1,4 +1,5 @@
 #include "imports/stdlib.fc";
+#include "imports/utils.fc";
 
 const op::check_transaction = 0x91d555f7; 
 const tag::transaction_checked = 0x756adff1; 
@@ -112,7 +113,7 @@ slice get_sender_addr(cell in_msg_full) {
 int save_query(cell target_tx, cell in_msg_full) impure {
   slice s_addr = get_sender_addr(in_msg_full);
   
-  int tx_hash = target_tx.cell_hash();
+  (int tx_hash,_) = target_tx.calc_cell_hash(0);
   int query_id = tx_hash >> ( 128 + 64 );
   var data = begin_cell().store_slice(s_addr).store_ref(target_tx);
   
@@ -157,8 +158,8 @@ int save_query(cell target_tx, cell in_msg_full) impure {
       ;; find tx in block
       cell block_tx = extract_ref(cur_block, tx_path);
 
-      int target_hash = target_tx.cell_hash();
-      int source_hash = block_tx.cell_hash();
+      (int target_hash,_) = target_tx.calc_cell_hash(0);
+      (int source_hash,_) = block_tx.calc_cell_hash(0);
       if (target_hash == source_hash) {
         load_data();
         int query_id = save_query(target_tx,in_msg_full);
