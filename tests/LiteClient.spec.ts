@@ -1,11 +1,11 @@
 import fs from "fs";
 
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { beginCell, Cell, toNano, Dictionary, convertToMerkleProof } from '@ton/core';
+import { beginCell, Cell, toNano } from '@ton/core';
 import { LiteClient } from '../wrappers/LiteClient';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { loadSignsCellfromFile, extractValidatorSet, extractValidatorsMap } from "../misc/helpers";
+import { loadSignsCellfromFile, extractValidatorSet, extractValidatorsMap, convertToMerkleProof } from "../misc/helpers";
 
 
 describe('LiteClient', () => {

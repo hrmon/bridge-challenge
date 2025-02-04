@@ -1,5 +1,5 @@
 import { Address, beginCell, toNano } from '@ton/core';
-import { createAltProvider, createLiteSMCMessage, retrieveTransaction, searchCellTree, waitForDeploy } from '../misc/helpers';
+import { convertToMerkleProof, createAltProvider, createLiteSMCMessage, retrieveTransaction, searchCellTree, waitForDeploy } from '../misc/helpers';
 import { TxChecker } from '../wrappers/TxChecker';
 
 
@@ -16,6 +16,14 @@ export async function main() {
         { blockIdRepr, address: txAccountAddress, logicalTime: txLogicalTime })
     const { signatures, block } = await createLiteSMCMessage({ configPath, blockIdRepr })
 
+    // prune block
+    const prunedBlock = beginCell().storeBits(block.bits)
+        .storeRef(block.refs[0])
+        .storeRef(convertToMerkleProof(block.refs[1]))
+        .storeRef(convertToMerkleProof(block.refs[2]))
+        .storeRef(block.refs[3])
+        .endCell();
+
     // construct proof as path to tx in block
     const { found, path } = searchCellTree(block, txCell);
     console.log(path);
@@ -27,10 +35,10 @@ export async function main() {
     const txChecker = provider.client.open(TxChecker.createFromAddress(address));
 
     await txChecker.sendCheckTransaction(provider.wallet.sender(provider.keyPair.secretKey), {
-        transaction: txCell,
+        transaction: convertToMerkleProof(txCell),
         proof: proofCell.endCell(),
-        currentBlock: beginCell().storeRef(block).storeRef(signatures).endCell(),
-        value: toNano('1'),
+        currentBlock: beginCell().storeRef(prunedBlock).storeRef(signatures).endCell(),
+        value: toNano('4'),
     });
 
     provider.ui.write('Check Requested...');

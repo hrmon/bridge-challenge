@@ -399,3 +399,21 @@ export function loadBlockExtra(slice: Slice) {
 
     }
 }
+
+function convertToPrunedBranch(c: Cell): Cell {
+    return beginCell()
+        .storeUint(1, 8)
+        .storeUint(1, 8)
+        .storeBuffer(c.hash(0))
+        .storeUint(c.depth(0), 16)
+        .endCell({ exotic: true });
+}
+
+export function convertToMerkleProof(c: Cell): Cell {
+    return beginCell()
+        .storeUint(3, 8)
+        .storeBuffer(c.hash(0))
+        .storeUint(c.depth(0), 16)
+        .storeRef(convertToPrunedBranch(c))
+        .endCell({ exotic: true });
+}

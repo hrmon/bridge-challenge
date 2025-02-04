@@ -221,7 +221,7 @@ int check_block_signs(int block_hash, cell signatures) {
     .store_uint(ans_tag, 32)
     .store_uint(query_id, 64)
     .store_uint(block_hash, 256)
-    .end_cell(), 64);
+    .end_cell(), 64 + 16);
 }
 
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg) impure {

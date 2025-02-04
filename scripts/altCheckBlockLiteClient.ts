@@ -1,5 +1,5 @@
-import { Address, toNano } from '@ton/core';
-import { createAltProvider, createLiteSMCMessage } from '../misc/helpers';
+import { Address, beginCell, toNano } from '@ton/core';
+import { convertToMerkleProof, createAltProvider, createLiteSMCMessage } from '../misc/helpers';
 import { LiteClient } from '../wrappers/LiteClient';
 
 
@@ -13,10 +13,18 @@ export async function main() {
 
     const { signatures, block } = await createLiteSMCMessage({ configPath, blockIdRepr })
 
+    const prunedBlock = beginCell().storeBits(block.bits)
+        .storeRef(block.refs[0])
+        .storeRef(convertToMerkleProof(block.refs[1]))
+        .storeRef(convertToMerkleProof(block.refs[2]))
+        .storeRef(convertToMerkleProof(block.refs[3]))
+        .endCell();
+
+
     await liteClient.sendCheckBlock(provider.wallet.sender(provider.keyPair.secretKey), {
-        block,
+        block: prunedBlock,
         signatures,
-        value: toNano('0.5'),
+        value: toNano('1'),
     });
 }
 

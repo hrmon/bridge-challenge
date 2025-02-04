@@ -16,7 +16,7 @@ export async function main() {
     await liteClient.sendNewKeyBlock(provider.wallet.sender(provider.keyPair.secretKey), {
         block,
         signatures,
-        value: toNano('0.5'),
+        value: toNano('1'),
     });
 }
 
